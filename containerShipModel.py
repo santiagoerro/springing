@@ -119,9 +119,13 @@ testMatrix = xr.Dataset(coords={
 
 # hydrostatic stiffness calculation
 hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
+hydrostaticStiffness.to_netcdf("data/hydrostatics.nc")
+# hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
+# hydrodynamicResults.to_netcdf("data/hydrodynamics.nc")
+# hydrodynamicResults = xr.open_dataset("data/hydrodynamics.nc")
 
 # coupling of hydrodynamic and structural results, springing results
 springingResults = SpringingResults(massMatrix, stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)

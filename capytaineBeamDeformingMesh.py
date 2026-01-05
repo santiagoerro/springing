@@ -475,6 +475,8 @@ class MeshBeamProperties:
         self.beamSegments = beam.segments
         self.beamVertices = beam.vertices
         self.beamSegmentLength = beam.segmentLength
+        self.verticalShearCorrections = beam.verticalShearCorrections
+        self.horizontalShearCorrections = beam.horizontalShearCorrections
 
         self.segmentOfFace = np.zeros([self.numberMeshFaces], dtype=int)
 
@@ -601,18 +603,26 @@ class MeshBeamProperties:
                     yOffset = self.yOffsetFaces[face]
                     zOffset = self.zOffsetFaces[face]
 
-                    deflectionLinearMotion = 3 * chiSegment**2 - 2 * chiSegment**3
-                    deflectionPrimeLinearMotion = (6 * chiSegment - 6 * chiSegment**2) / segmentLength
-                    deflectionAngularMotion = (-chiSegment**2 + chiSegment**3) * segmentLength
-                    deflectionPrimeAngularMotion = -2 * chiSegment + 3 * chiSegment**2
+                    deltaV = self.verticalShearCorrections[segment]
+                    deltaH = self.horizontalShearCorrections[segment]
+
+                    verticalBendingDeflectionHeave = (deltaV * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + deltaV)
+                    verticalBendingRotationHeave = (-6 * chiSegment + 6 * chiSegment**2) / segmentLength / (1 + deltaV)
+                    verticalBendingDeflectionPitch = (deltaV/2 * chiSegment + (2 - deltaV)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaV)
+                    verticalBendingRotationPitch = ((-2 + deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
+
+                    horizontalBendingDeflectionSway = (deltaH * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + deltaH)
+                    horizontalBendingRotationSway = -(-6 * chiSegment + 6 * chiSegment**2) / (1 + deltaH) / segmentLength
+                    horizontalBendingDeflectionYaw = -(deltaH/2 * chiSegment + (2 - deltaH)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaH)
+                    horizontalBendingRotationYaw = ((-2 + deltaH) * chiSegment + 3 * chiSegment**2) / (1 + deltaH)
 
                     surgeDofDisplacements[face,:] = np.array([chiSegment, 0, 0])
-                    swayDofDisplacements[face,:]  = np.array([-yOffset * deflectionPrimeLinearMotion, deflectionLinearMotion, 0])
-                    heaveDofDisplacements[face,:] = np.array([-zOffset * deflectionPrimeLinearMotion, 0, deflectionLinearMotion])
+                    swayDofDisplacements[face,:]  = np.array([-yOffset * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
+                    heaveDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
                     rollDofDisplacements[face,:]  = np.array([0, -zOffset * chiSegment, yOffset * chiSegment])
-                    pitchDofDisplacements[face,:] = np.array([-zOffset * deflectionPrimeAngularMotion, 0, deflectionAngularMotion])
-                    yawDofDisplacements[face,:]   = np.array([-yOffset * deflectionPrimeAngularMotion, deflectionAngularMotion, 0])
+                    pitchDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
+                    yawDofDisplacements[face,:]   = np.array([-yOffset * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
             # segment after the vertex
             segment = vertex
@@ -632,18 +642,26 @@ class MeshBeamProperties:
                     yOffset = self.yOffsetFaces[face]
                     zOffset = self.zOffsetFaces[face]
 
-                    deflectionLinearMotion = 1 - 3 * chiSegment**2 + 2 * chiSegment**3
-                    deflectionPrimeLinearMotion = (-6 * chiSegment + 6 * chiSegment**2) / segmentLength
-                    deflectionAngularMotion = (chiSegment - 2 * chiSegment**2 + chiSegment**3) * segmentLength
-                    deflectionPrimeAngularMotion = 1 - 4 * chiSegment + 3 * chiSegment**2
+                    deltaV = self.verticalShearCorrections[segment]
+                    deltaH = self.horizontalShearCorrections[segment]
+
+                    verticalBendingDeflectionHeave = 1 + (-deltaV * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + deltaV)
+                    verticalBendingRotationHeave = (6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + deltaV)
+                    verticalBendingDeflectionPitch = ((-2 - deltaV)/2 * chiSegment + (4 + deltaV)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaV)
+                    verticalBendingRotationPitch = 1 + ((-4 - deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
+
+                    horizontalBendingDeflectionSway = 1 + (-deltaH * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + deltaH)
+                    horizontalBendingRotationSway = -(6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + deltaH)
+                    horizontalBendingDeflectionYaw = -((-2 - deltaH)/2 * chiSegment + (4 + deltaH)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaH)
+                    horizontalBendingRotationYaw = 1 + ((-4 - deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
 
                     surgeDofDisplacements[face,:] = np.array([1 - chiSegment, 0, 0])
-                    swayDofDisplacements[face,:]  = np.array([-yOffset * deflectionPrimeLinearMotion, deflectionLinearMotion, 0])
-                    heaveDofDisplacements[face,:] = np.array([-zOffset * deflectionPrimeLinearMotion, 0, deflectionLinearMotion])
+                    swayDofDisplacements[face,:]  = np.array([-yOffset * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
+                    heaveDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
                     rollDofDisplacements[face,:]  = np.array([0, -zOffset * (1 - chiSegment), yOffset * (1 - chiSegment)])
-                    pitchDofDisplacements[face,:] = np.array([-zOffset * deflectionPrimeAngularMotion, 0, deflectionAngularMotion])
-                    yawDofDisplacements[face,:]   = np.array([-yOffset * deflectionPrimeAngularMotion, deflectionAngularMotion, 0])
+                    pitchDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
+                    yawDofDisplacements[face,:]   = np.array([-yOffset * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
             dofs[surgeDofName] = surgeDofDisplacements
             dofs[swayDofName]  = swayDofDisplacements
@@ -708,15 +726,14 @@ class SpringingResults:
                 with dimensions labeled ``'influenced_dof'`` and ``'radiating_dof'``.
         :rtype: SpringingResults
         """
-        self.massMatrix = xr.DataArray(massMatrix, dims=['influenced_dof', 'radiating_dof'])
-        self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims=['influenced_dof', 'radiating_dof'])
+        self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
+        self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
 
         self.forcesFromAmplitudesMatrices = - (hydrodynamicResults.added_mass + self.massMatrix) * hydrodynamicResults.omega**2 + complex(0,1) * hydrodynamicResults.omega * hydrodynamicResults.radiation_damping + (self.stiffnessMatrix + hydrostaticStiffness)
 
-        self.amplitudesFromForcesMatrices = la.inv(self.forcesFromAmplitudesMatrices)
-        self.amplitudesFromForcesMatrices = self.amplitudesFromForcesMatrices.rename({'radiating_dof': 'influenced_dof','influenced_dof': 'radiating_dof'})
+        self.amplitudesFromForcesMatrices = xr.DataArray(la.inv(self.forcesFromAmplitudesMatrices), dims = ['omega', 'radiating_dof', 'influenced_dof'])
 
-        self.displacementAmplitudes = xr.dot(hydrodynamicResults.excitation_force, self.amplitudesFromForcesMatrices, dims=['influenced_dof'])
+        self.displacementAmplitudes = xr.dot(hydrodynamicResults.excitation_force, self.amplitudesFromForcesMatrices, dims = ['influenced_dof'])
         self.displacementAmplitudes = self.displacementAmplitudes.rename({'radiating_dof': 'dof'})
 
         self.hydrostaticStiffness = hydrostaticStiffness
