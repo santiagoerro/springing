@@ -66,11 +66,23 @@ centerOfMass = (0, 0, zNeutralAxis)
 uniformlyDistributedMass = hullDisplacement - np.sum(pointMasses)
 linearDensitiesBeam = np.ones([beamSegments]) * uniformlyDistributedMass / hullLength
 
-# beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
-beam = Beam(initialPoint = np.array([-hullLength/2, 0 , zNeutralAxis]), length = hullLength, segments = beamSegments)
+beamDefinition = {}
+beamDefinition['nodeXPositions'] = np.linspace(-hullLength/2, hullLength/2, beamSegments + 1)
+beamDefinition['crossSectionAreas'] = sectionalAreas
+beamDefinition['verticalAreaMoments'] = verticalAreaMoments
+beamDefinition['horizontalAreaMoments'] = horizontalAreaMoments
+beamDefinition['verticalTimoshenkoCoefs'] = verticalShearAreaFractions
+beamDefinition['horizontalTimoshenkoCoefs'] = horizontalShearAreaFractions
+beamDefinition['torsionConstants'] = np.ones([beamSegments])
+beamDefinition['warpingConstants'] = np.ones([beamSegments])
+beamDefinition['youngsModulus'] = youngsModulus
+beamDefinition['shearModulus'] = shearModulus
+beamDefinition['zNeutralAxis'] = zNeutralAxis
+beamDefinition['zTwistCenter'] = zNeutralAxis
+beamDefinition['linearDensities'] = linearDensitiesBeam
 
-# mass matrix, with uniformly distributed and point mass contributions
-massMatrix = beam.UniformlyDistributedMassMatrix(linearDensitiesBeam)
+# beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
+beam = Beam(beamDefinition)
 
 if not beamSegments % 40 == 0:
     sys.exit('Beam must be discretized in a number of segments that is a multiple of 40.')
@@ -78,15 +90,13 @@ segmentsPerHalfStation = beamSegments / 40
 for i in range(pointMasses.size):
     vertex = int(pointMassStations[i] * 2 * segmentsPerHalfStation)
 
-    massMatrix[6 * vertex    , 6 * vertex    ] += pointMasses[i]
-    massMatrix[6 * vertex + 1, 6 * vertex + 1] += pointMasses[i]
-    massMatrix[6 * vertex + 2, 6 * vertex + 2] += pointMasses[i]
+    beam.massMatrix[6 * vertex    , 6 * vertex    ] += pointMasses[i]
+    beam.massMatrix[6 * vertex + 1, 6 * vertex + 1] += pointMasses[i]
+    beam.massMatrix[6 * vertex + 2, 6 * vertex + 2] += pointMasses[i]
 
-# stiffness matrix
-stiffnessMatrix = beam.StiffnessMatrix(sectionalAreas, verticalAreaMoments, horizontalAreaMoments, verticalShearAreaFractions, horizontalShearAreaFractions, youngsModulus, shearModulus)
 
 # dry natural frequencies
-dryNaturalFrequenciesSquared, dryVibrationModes = eigh(stiffnessMatrix, massMatrix)
+dryNaturalFrequenciesSquared, dryVibrationModes = eigh(beam.stiffnessMatrix, beam.massMatrix)
 
 zeroFrequencyIndices = np.abs(dryNaturalFrequenciesSquared) < 0.01
 dryNaturalFrequenciesSquared[zeroFrequencyIndices] = 0
@@ -100,9 +110,8 @@ meshResolution = (panelsLength, panelsBreadth, panelsDepth)
 hullMesh = cpt.mesh_parallelepiped(size = hullSize, center = hullCenter, name = 'hull', resolution = meshResolution).immersed_part()
 
 # creation of dofs from mesh and beam
-hullMeshBeamProperties = MeshBeamProperties(hullMesh, beam)
 
-dofs = hullMeshBeamProperties.CreateDOFs()
+dofs = beam.CalculateDOFs(hullMesh)
 
 # definition of the body
 hullBody = cpt.FloatingBody(mesh = hullMesh, dofs = dofs, center_of_mass = centerOfMass)
@@ -118,9 +127,9 @@ testMatrix = xr.Dataset(coords={
 })
 
 # hydrostatic stiffness calculation
-hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
-hydrostaticStiffness.to_netcdf("data/hydrostatics.nc")
-# hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
+# hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
+# hydrostaticStiffness.to_netcdf("data/hydrostatics.nc")
+hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
@@ -128,16 +137,16 @@ hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
 # hydrodynamicResults = xr.open_dataset("data/hydrodynamics.nc")
 
 # coupling of hydrodynamic and structural results, springing results
-springingResults = SpringingResults(massMatrix, stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
+springingResults = SpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
 
 # midships bending moments
 midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = np.zeros([6*beam.vertices])
+    displacements = np.zeros([6*beam.numberNodes])
     displacements = waveHeight * springingResults.displacementAmplitudes.values[i, 0, :]
-    midshipsBendingMoments[i] = beam.BendingMoment(beam.length/2, displacements)
+    midshipsBendingMoments[i] = beam.BendingMoment(hullLength/2, displacements)
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
 
 bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight)
