@@ -162,14 +162,14 @@ class Beam:
             massMatrix[z2, z1] += 54 * segmentMassOver420
             massMatrix[z2, z2] += 156 * segmentMassOver420
 
-            massMatrix[z1  , tau1] += 22 * segmentLength * segmentMassOver420
-            massMatrix[tau1, z1  ] += 22 * segmentLength * segmentMassOver420
-            massMatrix[z1  , tau2] += -13 * segmentLength * segmentMassOver420
-            massMatrix[tau2, z1  ] += -13 * segmentLength * segmentMassOver420
-            massMatrix[tau1, z2  ] += 13 * segmentLength * segmentMassOver420
-            massMatrix[z2  , tau1] += 13 * segmentLength * segmentMassOver420
-            massMatrix[z2  , tau2] += -22 * segmentLength * segmentMassOver420
-            massMatrix[tau2, z2  ] += -22 * segmentLength * segmentMassOver420
+            massMatrix[z1  , tau1] += -22 * segmentLength * segmentMassOver420
+            massMatrix[tau1, z1  ] += -22 * segmentLength * segmentMassOver420
+            massMatrix[z1  , tau2] += 13 * segmentLength * segmentMassOver420
+            massMatrix[tau2, z1  ] += 13 * segmentLength * segmentMassOver420
+            massMatrix[tau1, z2  ] += -13 * segmentLength * segmentMassOver420
+            massMatrix[z2  , tau1] += -13 * segmentLength * segmentMassOver420
+            massMatrix[z2  , tau2] += 22 * segmentLength * segmentMassOver420
+            massMatrix[tau2, z2  ] += 22 * segmentLength * segmentMassOver420
 
             massMatrix[tau1, tau1] += 4 * segmentLength**2 * segmentMassOver420
             massMatrix[tau1, tau2] += -3 * segmentLength**2 * segmentMassOver420
@@ -249,14 +249,14 @@ class Beam:
             stiffnessMatrix[z2, z1] += -12 * EIOverCorrection / segmentLength**3
             stiffnessMatrix[z2, z2] += 12 * EIOverCorrection / segmentLength**3
 
-            stiffnessMatrix[z1  , tau1] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau1, z1  ] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z1  , tau2] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau2, z1  ] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau1, z2  ] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z2  , tau1] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z2  , tau2] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau2, z2  ] += -6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[z1  , tau1] += -6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[tau1, z1  ] += -6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[z1  , tau2] += -6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[tau2, z1  ] += -6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[tau1, z2  ] += 6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[z2  , tau1] += 6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[z2  , tau2] += 6 * EIOverCorrection / segmentLength**2
+            stiffnessMatrix[tau2, z2  ] += 6 * EIOverCorrection / segmentLength**2
 
             stiffnessMatrix[tau1, tau1] += (4 + shearCorrectionVertical) * EIOverCorrection / segmentLength
             stiffnessMatrix[tau1, tau2] += (2 - shearCorrectionVertical) * EIOverCorrection / segmentLength
@@ -333,6 +333,7 @@ class Beam:
             angular1 = -segmentDisplacements[4]
             linear2 = segmentDisplacements[8]
             angular2 = -segmentDisplacements[10]
+            #TODO: these minus signs beak the code because the DOFs and the stiffness and mass matrices follow different sign criteria. They have to be recalculated... Be smart about it. Relate one to the other to make it easy. But check symbolically.
         elif plane == 'h':
             linear1 = segmentDisplacements[1]
             angular1 = segmentDisplacements[5]
@@ -449,11 +450,11 @@ class Beam:
         
         Heave `'z%d'%i`
         
-        Roll `'phi%d'%i`
+        Roll `'roll%d'%i`
         
-        Pitch `'tau%d'%i`
+        Pitch `'pitch%d'%i`
         
-        Yaw `'psi%d'%i`
+        Yaw `'yaw%d'%i`
 
         The beam's neutral axis is deformed between nodes according to the FEM interpolation
         polynomials for beam theory. That is, cubic for bending, linear for axial and torsional.
