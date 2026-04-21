@@ -206,10 +206,10 @@ class Beam:
             massMatrix[psi2, psi2] += horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
 
             # torsional motion: TODO
-            massMatrix[phi1, phi1] = segmentMass / 3
-            massMatrix[phi1, phi2] = segmentMass / 6
-            massMatrix[phi2, phi1] = segmentMass / 6
-            massMatrix[phi2, phi2] = segmentMass / 3
+            massMatrix[phi1, phi1] += segmentMass / 3
+            massMatrix[phi1, phi2] += segmentMass / 6
+            massMatrix[phi2, phi1] += segmentMass / 6
+            massMatrix[phi2, phi2] += segmentMass / 3
 
         return massMatrix
 
@@ -294,10 +294,10 @@ class Beam:
             stiffnessMatrix[psi2, psi1] += (2 - shearCorrectionHorizontal) * EIOverCorrection / segmentLength
             stiffnessMatrix[psi2, psi2] += (4 + shearCorrectionHorizontal) * EIOverCorrection / segmentLength
 
-            stiffnessMatrix[phi1, phi1] = EAOverL
-            stiffnessMatrix[phi1, phi2] = -EAOverL
-            stiffnessMatrix[phi2, phi1] = -EAOverL
-            stiffnessMatrix[phi2, phi2] = EAOverL
+            stiffnessMatrix[phi1, phi1] += EAOverL
+            stiffnessMatrix[phi1, phi2] += -EAOverL
+            stiffnessMatrix[phi2, phi1] += -EAOverL
+            stiffnessMatrix[phi2, phi2] += EAOverL
 
         return stiffnessMatrix
 

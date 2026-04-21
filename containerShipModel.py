@@ -98,7 +98,7 @@ for i in range(pointMasses.size):
 # dry natural frequencies
 dryNaturalFrequenciesSquared, dryVibrationModes = eigh(beam.stiffnessMatrix, beam.massMatrix)
 
-zeroFrequencyIndices = np.abs(dryNaturalFrequenciesSquared) < 0.01
+zeroFrequencyIndices = np.abs(dryNaturalFrequenciesSquared) < 0.5
 dryNaturalFrequenciesSquared[zeroFrequencyIndices] = 0
 dryNaturalFrequenciesHz = np.sqrt(dryNaturalFrequenciesSquared) / (2 * np.pi)
 
