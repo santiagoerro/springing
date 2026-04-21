@@ -3,7 +3,7 @@ import capytaine as cpt
 import xarray as xr
 import sys
 from scipy.linalg import eigh
-from capytaineBeamDeformingMesh import *
+import springing as spr
 from matplotlib import pyplot as plt
 
 cpt.set_logging('INFO')
@@ -82,7 +82,7 @@ beamDefinition['zTwistCenter'] = zNeutralAxis
 beamDefinition['linearDensities'] = linearDensitiesBeam
 
 # beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
-beam = Beam(beamDefinition)
+beam = spr.Beam(beamDefinition)
 
 if not beamSegments % 40 == 0:
     sys.exit('Beam must be discretized in a number of segments that is a multiple of 40.')
@@ -137,7 +137,7 @@ hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
 # hydrodynamicResults = xr.open_dataset("data/hydrodynamics.nc")
 
 # coupling of hydrodynamic and structural results, springing results
-springingResults = SpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
+springingResults = spr.SpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
 
 # midships bending moments
 midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
