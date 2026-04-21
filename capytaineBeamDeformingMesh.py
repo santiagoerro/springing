@@ -135,7 +135,12 @@ class Beam:
 
         for i in range(self.numberSegments):
             segmentLength = self.segmentLengths[i]
-            segmentMassOver420 = linearDensities[i] * segmentLength / 420
+            segmentMass = linearDensities[i] * segmentLength
+
+            svi = self.verticalShearCorrections[i]
+            svi2 = svi**2
+            shi = self.horizontalShearCorrections[i]
+            shi2 = shi**2
 
             x1 = 6*i
             y1 = 6*i + 1
@@ -151,57 +156,61 @@ class Beam:
             psi2 = 6*i + 11
 
             # axial motion
-            massMatrix[x1,x1] += 140 * segmentMassOver420
-            massMatrix[x1,x2] += 70 * segmentMassOver420
-            massMatrix[x2,x1] += 70 * segmentMassOver420
-            massMatrix[x2,x2] += 140 * segmentMassOver420
+            massMatrix[x1,x1] += segmentMass / 3
+            massMatrix[x1,x2] += segmentMass / 6
+            massMatrix[x2,x1] += segmentMass / 6
+            massMatrix[x2,x2] += segmentMass / 3
 
             # vertical bending motion
-            massMatrix[z1, z1] += 156 * segmentMassOver420
-            massMatrix[z1, z2] += 54 * segmentMassOver420
-            massMatrix[z2, z1] += 54 * segmentMassOver420
-            massMatrix[z2, z2] += 156 * segmentMassOver420
+            verticalFactor = segmentMass / (840 * (svi2 + 2 * svi + 1))
 
-            massMatrix[z1  , tau1] += -22 * segmentLength * segmentMassOver420
-            massMatrix[tau1, z1  ] += -22 * segmentLength * segmentMassOver420
-            massMatrix[z1  , tau2] += 13 * segmentLength * segmentMassOver420
-            massMatrix[tau2, z1  ] += 13 * segmentLength * segmentMassOver420
-            massMatrix[tau1, z2  ] += -13 * segmentLength * segmentMassOver420
-            massMatrix[z2  , tau1] += -13 * segmentLength * segmentMassOver420
-            massMatrix[z2  , tau2] += 22 * segmentLength * segmentMassOver420
-            massMatrix[tau2, z2  ] += 22 * segmentLength * segmentMassOver420
+            massMatrix[z1, z1] += verticalFactor * (280 * svi2 + 588 * svi + 312)
+            massMatrix[z1, z2] += verticalFactor * (140 * svi2 + 252 * svi + 108)
+            massMatrix[z2, z1] += verticalFactor * (140 * svi2 + 252 * svi + 108)
+            massMatrix[z2, z2] += verticalFactor * (280 * svi2 + 588 * svi + 312)
 
-            massMatrix[tau1, tau1] += 4 * segmentLength**2 * segmentMassOver420
-            massMatrix[tau1, tau2] += -3 * segmentLength**2 * segmentMassOver420
-            massMatrix[tau2, tau1] += -3 * segmentLength**2 * segmentMassOver420
-            massMatrix[tau2, tau2] += 4 * segmentLength**2 * segmentMassOver420
+            massMatrix[z1  , tau1] += verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
+            massMatrix[tau1, z1  ] += verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
+            massMatrix[z1  , tau2] += verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
+            massMatrix[tau2, z1  ] += verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
+            massMatrix[tau1, z2  ] += verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
+            massMatrix[z2  , tau1] += verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
+            massMatrix[z2  , tau2] += verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
+            massMatrix[tau2, z2  ] += verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
+
+            massMatrix[tau1, tau1] += verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
+            massMatrix[tau1, tau2] += verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
+            massMatrix[tau2, tau1] += verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
+            massMatrix[tau2, tau2] += verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
 
             # horizontal bending motion
-            massMatrix[y1, y1] += 156 * segmentMassOver420
-            massMatrix[y1, y2] += 54 * segmentMassOver420
-            massMatrix[y2, y1] += 54 * segmentMassOver420
-            massMatrix[y2, y2] += 156 * segmentMassOver420
+            horizontalFactor = segmentMass / (840 * (shi2 + 2 * shi + 1))
 
-            massMatrix[y1  , psi1] += 22 * segmentLength * segmentMassOver420
-            massMatrix[psi1, y1  ] += 22 * segmentLength * segmentMassOver420
-            massMatrix[y1  , psi2] += -13 * segmentLength * segmentMassOver420
-            massMatrix[psi2, y1  ] += -13 * segmentLength * segmentMassOver420
-            massMatrix[psi1, y2  ] += 13 * segmentLength * segmentMassOver420
-            massMatrix[y2  , psi1] += 13 * segmentLength * segmentMassOver420
-            massMatrix[y2  , psi2] += -22 * segmentLength * segmentMassOver420
-            massMatrix[psi2, y2  ] += -22 * segmentLength * segmentMassOver420
+            massMatrix[y1, y1] += horizontalFactor * (280 * shi2 + 588 * shi + 312)
+            massMatrix[y1, y2] += horizontalFactor * (140 * shi2 + 252 * shi + 108)
+            massMatrix[y2, y1] += horizontalFactor * (140 * shi2 + 252 * shi + 108)
+            massMatrix[y2, y2] += horizontalFactor * (280 * shi2 + 588 * shi + 312)
 
-            massMatrix[psi1, psi1] += 4 * segmentLength**2 * segmentMassOver420
-            massMatrix[psi1, psi2] += -3 * segmentLength**2 * segmentMassOver420
-            massMatrix[psi2, psi1] += -3 * segmentLength**2 * segmentMassOver420
-            massMatrix[psi2, psi2] += 4 * segmentLength**2 * segmentMassOver420
+            massMatrix[y1  , psi1] += horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
+            massMatrix[psi1, y1  ] += horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
+            massMatrix[y1  , psi2] += horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
+            massMatrix[psi2, y1  ] += horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
+            massMatrix[psi1, y2  ] += horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
+            massMatrix[y2  , psi1] += horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
+            massMatrix[y2  , psi2] += horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
+            massMatrix[psi2, y2  ] += horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
+
+            massMatrix[psi1, psi1] += horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
+            massMatrix[psi1, psi2] += horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
+            massMatrix[psi2, psi1] += horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
+            massMatrix[psi2, psi2] += horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
 
             # torsional motion: TODO
-            massMatrix[phi1, phi1] = 2 * segmentMassOver420
-            massMatrix[phi1, phi2] = 1 * segmentMassOver420
-            massMatrix[phi2, phi1] = 1 * segmentMassOver420
-            massMatrix[phi2, phi2] = 2 * segmentMassOver420
-        
+            massMatrix[phi1, phi1] = segmentMass / 3
+            massMatrix[phi1, phi2] = segmentMass / 6
+            massMatrix[phi2, phi1] = segmentMass / 6
+            massMatrix[phi2, phi2] = segmentMass / 3
+
         return massMatrix
 
 
