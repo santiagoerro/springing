@@ -2,7 +2,6 @@ import numpy as np
 import capytaine as cpt
 import xarray as xr
 import sys
-from scipy.linalg import eigh
 import springing as spr
 from matplotlib import pyplot as plt
 
@@ -51,9 +50,10 @@ omegas = np.array([4.50, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 8.22])
 waveDirections = np.array([np.pi])
 
 # mesh resolution
-panelsLength = 100
-panelsBreadth = 16
-panelsDepth = 16
+panelsPerMeter = 65
+
+# number of modal components considered
+numberModes = 20
 
 
 
@@ -94,15 +94,11 @@ for i in range(pointMasses.size):
     beam.massMatrix[6 * vertex + 1, 6 * vertex + 1] += pointMasses[i]
     beam.massMatrix[6 * vertex + 2, 6 * vertex + 2] += pointMasses[i]
 
-
-# dry natural frequencies
-dryNaturalFrequenciesSquared, dryVibrationModes = eigh(beam.stiffnessMatrix, beam.massMatrix)
-
-zeroFrequencyIndices = np.abs(dryNaturalFrequenciesSquared) < 0.5
-dryNaturalFrequenciesSquared[zeroFrequencyIndices] = 0
-dryNaturalFrequenciesHz = np.sqrt(dryNaturalFrequenciesSquared) / (2 * np.pi)
-
 # mesh generation
+panelsLength = int(round(panelsPerMeter * hullLength))
+panelsBreadth = int(round(panelsPerMeter * hullBreadth))
+panelsDepth = int(round(panelsPerMeter * hullDepth))
+
 hullSize = (hullLength, hullBreadth, hullDepth)
 hullCenter = (0, 0, -hullDraft + hullDepth/2)
 meshResolution = (panelsLength, panelsBreadth, panelsDepth)
@@ -110,11 +106,11 @@ meshResolution = (panelsLength, panelsBreadth, panelsDepth)
 hullMesh = cpt.mesh_parallelepiped(size = hullSize, center = hullCenter, name = 'hull', resolution = meshResolution).immersed_part()
 
 # creation of dofs from mesh and beam
-
-dofs = beam.CalculateNodalDOFs(hullMesh)
+dryNaturalFrequenciesSquared, dryVibrationModesNormalized, modalDofs = beam.CalculateModalDOFs(hullMesh, numberModes)
+dryNaturalFrequenciesHz = np.sqrt(dryNaturalFrequenciesSquared)/(2 * np.pi)
 
 # definition of the body
-hullBody = cpt.FloatingBody(mesh = hullMesh, dofs = dofs, center_of_mass = centerOfMass)
+hullBody = cpt.FloatingBody(mesh = hullMesh, dofs = modalDofs, center_of_mass = centerOfMass)
 
 # solution of the array of problems
 testMatrix = xr.Dataset(coords={
@@ -128,24 +124,24 @@ testMatrix = xr.Dataset(coords={
 
 # hydrostatic stiffness calculation
 # hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
-# hydrostaticStiffness.to_netcdf("data/hydrostatics.nc")
-hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
+# hydrostaticStiffness.to_netcdf("data/modal_hydrostatics.nc")
+hydrostaticStiffness = xr.open_dataarray("data/modal_hydrostatics.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
-# hydrodynamicResults.to_netcdf("data/hydrodynamics.nc")
-# hydrodynamicResults = xr.open_dataset("data/hydrodynamics.nc")
+# hydrodynamicResults.to_netcdf("data/modal_hydrodynamics.nc")
+# hydrodynamicResults = xr.open_dataset("data/modal_hydrodynamics.nc")
 
 # coupling of hydrodynamic and structural results, springing results
-springingResults = spr.NodalSpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
+modalSpringingResults = spr.ModalSpringingResults(dryNaturalFrequenciesSquared, hydrostaticStiffness, hydrodynamicResults)
 
 # midships bending moments
 midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = np.zeros([6*beam.numberNodes])
-    displacements = waveHeight * springingResults.displacementAmplitudes.values[i, 0, :]
+    displacements = np.zeros([6 * beam.numberNodes])
+    displacements = waveHeight * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.BendingMoment(hullLength/2, displacements)
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
 
@@ -200,7 +196,7 @@ motion = {}
 dofIndex = 0
 
 for dof in hullBody.dofs.keys():
-    motion[dof] = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, waveDirectionIndex, dofIndex]
+    motion[dof] = waveHeight * modalSpringingResults.modalAmplitudes.values[omegaIndex, waveDirectionIndex, dofIndex]
     dofIndex += 1
 
 animation = hullBody.animate(motion = motion, loop_duration = 1)

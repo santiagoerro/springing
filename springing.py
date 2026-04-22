@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import numpy.linalg as la
+from scipy.linalg import eigh
 import capytaine as cpt
 import xarray as xr
 
@@ -403,19 +404,19 @@ class Beam:
             if x < 0 or x > beamLength:
                 sys.exit('The position x at which the bending moment will be calculated must be between 0 and the beam length.')
 
-            leftVertexIndex = np.searchsorted(nodeXPositionsStartingAtZero, x, side = 'right')-1
-            segmentLength = self.segmentLengths[leftVertexIndex]
-            coordinateSegment = x - nodeXPositionsStartingAtZero[leftVertexIndex]
+            aftVertexIndex = np.searchsorted(nodeXPositionsStartingAtZero, x, side = 'right')-1
+            segmentLength = self.segmentLengths[aftVertexIndex]
+            coordinateSegment = x - nodeXPositionsStartingAtZero[aftVertexIndex]
 
-            segmentDisplacements = displacements[6*leftVertexIndex : 6*(leftVertexIndex + 2)]
+            segmentDisplacements = displacements[6*aftVertexIndex : 6*(aftVertexIndex + 2)]
 
             if plane == 'v':
-                verticalAreaMoment = self.verticalAreaMoments[leftVertexIndex]
-                verticalShearCorrection = self.verticalShearCorrections[leftVertexIndex]
+                verticalAreaMoment = self.verticalAreaMoments[aftVertexIndex]
+                verticalShearCorrection = self.verticalShearCorrections[aftVertexIndex]
                 return self.SegmentBendingMoment(coordinateSegment, segmentLength, segmentDisplacements, verticalAreaMoment, verticalShearCorrection, 'v')
             else:
-                horizontalAreaMoment = self.horizontalAreaMoments[leftVertexIndex]
-                horizontalShearCorrection = self.horizontalShearCorrections[leftVertexIndex]
+                horizontalAreaMoment = self.horizontalAreaMoments[aftVertexIndex]
+                horizontalShearCorrection = self.horizontalShearCorrections[aftVertexIndex]
                 return self.SegmentBendingMoment(coordinateSegment, segmentLength, segmentDisplacements, horizontalAreaMoment, horizontalShearCorrection, 'h')
 
         bendingMomentDistribution = np.zeros([x.size], dtype = np.complex128)
@@ -442,9 +443,9 @@ class Beam:
                     bendingMomentDistribution[mask] = self.SegmentBendingMoment(coordinatesSegment, segmentLength, segmentDisplacements, horizontalAreaMoment, horizontalShearCorrection, 'h')
 
         return bendingMomentDistribution
-    
 
-    def CalculateDOFs(self, hullMesh : cpt.Mesh):
+
+    def CalculateNodalDOFs(self, hullMesh : cpt.Mesh):
         """
         Creates the degrees of freedom corresponding to the object's mesh and beam.
 
@@ -637,7 +638,54 @@ class Beam:
         return dofs
 
 
-class SpringingResults:
+    def CalculateModalDOFs(self, hullMesh: cpt.Mesh, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+        if numberModes < 6:
+            sys.exit('numberModes must be greater than or equal to 6: at least the rigid body modes must be considered.')
+
+        allDryNaturalFrequenciesSquared, allDryVibrationModesNormalized = eigh(self.stiffnessMatrix, self.massMatrix)
+
+        sortingIndices = np.argsort(np.abs(allDryNaturalFrequenciesSquared))
+
+        if not np.abs(allDryNaturalFrequenciesSquared[sortingIndices[5]]) < np.abs(allDryNaturalFrequenciesSquared[sortingIndices[6]]) * rigidBodyModesFrequencySquaredTolerance:
+            sys.exit('Rigid body mode frequencies are not sufficiently smaller than flexible mode frequencies, according to the tolerance provided.')
+        
+        allDryNaturalFrequenciesSquared[sortingIndices[0:6]] = np.zeros([6])
+
+        initialIndex = np.min(sortingIndices[0:6])
+        if not initialIndex == 0:
+            print('Warning: Imaginary dry natural frequencies were encountered. There could be inconsistencies in the definition of the mass or stiffness matrices.')
+
+        numberNodalDOFs = self.stiffnessMatrix.shape[0]
+
+        if initialIndex + numberModes >= numberNodalDOFs:
+            sys.exit('The requested number of modes is greater than the number of available real frequency modes.')
+
+        requestedDryNaturalFrequenciesSquared = np.zeros([numberModes])
+        requestedDryVibrationModesNormalized = np.zeros([numberNodalDOFs, numberModes])
+
+        requestedDryNaturalFrequenciesSquared = allDryNaturalFrequenciesSquared[initialIndex : initialIndex + numberModes]
+        requestedDryVibrationModesNormalized = allDryVibrationModesNormalized[:, initialIndex : initialIndex + numberModes]
+
+        nodalDofs = self.CalculateNodalDOFs(hullMesh)
+
+        modalDofs = {}
+
+        for i in range(numberModes):
+            modeDisplacements = np.zeros([hullMesh.nb_faces, 3])
+            nodalDofIndex = 0
+
+            for nodalDof in nodalDofs.keys():
+                modeDisplacements = modeDisplacements + nodalDofs[nodalDof] * requestedDryVibrationModesNormalized[nodalDofIndex, i]
+                nodalDofIndex = nodalDofIndex + 1
+            
+            modeName = 'mode%d'%i
+            modalDofs[modeName] = modeDisplacements
+        
+        return requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized, modalDofs
+
+
+
+class NodalSpringingResults:
     """
     Class used to compute and store the results of the ship's springing analysis.
     """
@@ -701,3 +749,72 @@ class SpringingResults:
 
         self.hydrostaticStiffness = hydrostaticStiffness
         self.hydrodynamicResults = hydrodynamicResults
+
+
+
+class ModalSpringingResults:
+    """
+    Class used to compute and store the results of the ship's modal springing analysis.
+    """
+    def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
+        """
+        Instantiates a SpringingResults variable, calculating and storing the results of the springing
+        analysis defined by the parameters passed to it. Throughout, n corresponds to the beam's number
+        of nodes.
+
+        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
+            matrix for the hull girder beam.
+        :type massMatrix: (6*n,6*n)-numpy.ndarray
+
+        :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
+            Method stiffness matrix for the hull girder beam.
+        :type stiffnessMatrix: (6*n,6*n)-numpy.ndarray
+
+        :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
+            defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
+            the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
+            freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
+            of the `MeshBeamProperties` class.
+        :type hydrostaticStiffness: xarray.DataArray
+
+        :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
+            FloatingBody defined by the ship on a test matrix with different wave frequencies,
+            directions and water depths, as returned by the `fill_dataset` method of the
+            `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
+            given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
+            method.
+        :type hydrodynamicResults: xarray.Dataset
+
+        :returns: Class object containing the following attributes.
+
+            * displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
+                of the springing motions of the beam nodes divided by wave height, in m/m and
+                rad/m. The motions are sinusoidal, with the real part of the amplitude being the
+                displacement at t = 0 and the imaginary part being the displacement, with
+                opposite sign, after one fourth of the period. The array's dimensions are labeled
+                `'omega'`, `'wave_direction'`, `'water_depth'` and `'dof'`. The length and
+                coordinates associated to each of the first three dimensions match those of the
+                `added_mass` and `radiation_damping` attributes of `hydrodynamicResults`, and
+                are determined by the test matrix passed to the Capytaine BEM Solver when calculating
+                these results. The `'dof'` dimension has a length of 6n and indexes the degree of
+                freedom each amplitude corresponds to.
+            * massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            * stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
+                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+        :rtype: SpringingResults
+        """
+        massMatrix = np.eye(dryNaturalFrequenciesSquared.size)
+        self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
+        stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
+        self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
+
+        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (modalHydrodynamicResults.added_mass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * modalHydrodynamicResults.radiation_damping + (self.stiffnessMatrix + modalHydrostaticStiffness)
+
+        self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'radiating_dof', 'influenced_dof'])
+
+        self.modalAmplitudes: xr.DataArray = xr.dot(modalHydrodynamicResults.excitation_force, self.modalAmplitudesFromForcesMatrices, dims = ['influenced_dof'])
+        self.modalAmplitudes = self.modalAmplitudes.rename({'radiating_dof': 'dof'})
+
+        self.hydrostaticStiffness = modalHydrostaticStiffness
+        self.hydrodynamicResults = modalHydrodynamicResults
