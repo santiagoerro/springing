@@ -303,8 +303,9 @@ class Beam:
         return stiffnessMatrix
 
 
-    def SegmentBendingMoment(self, xSegment, segmentLength, segmentDisplacements, areaMoment, shearCorrection, plane):
+    def SegmentInternalForce(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, force: str):
         """
+        TODO: Update.
         Calculates the vertical or horizontal bending moments at a one or more points within a beam segment
         given their x coordinates within the segment and the displacements of the nodes around it.
 
@@ -331,6 +332,8 @@ class Beam:
             indicated by `xSegment`, in Nm.
         :rtype: float or (m,)-numpy.ndarray
         """
+        segmentLength = self.segmentLengths[segmentIndex]
+
         if type(xSegment) == np.ndarray:
             if np.min(xSegment) < 0 or np.max(xSegment) > segmentLength:
                 sys.exit('All values for the x coordinate within the beam segment must be between 0 and the segment length.')
@@ -338,34 +341,93 @@ class Beam:
             if xSegment < 0 or xSegment > segmentLength:
                 sys.exit('The value for the x coordinate within the beam segment must be between 0 and the segment length.')
 
-        if plane == 'v':
-            linear1 = segmentDisplacements[2]
-            angular1 = -segmentDisplacements[4]
-            linear2 = segmentDisplacements[8]
-            angular2 = -segmentDisplacements[10]
-            #TODO: these minus signs beak the code because the DOFs and the stiffness and mass matrices follow different sign criteria. They have to be recalculated... Be smart about it. Relate one to the other to make it easy. But check symbolically.
-        elif plane == 'h':
-            linear1 = segmentDisplacements[1]
-            angular1 = segmentDisplacements[5]
-            linear2 = segmentDisplacements[7]
-            angular2 = segmentDisplacements[11]
+        if force == 'a':
+            x1 = segmentDisplacements[0]
+            x2 = segmentDisplacements[6]
+
+            if not type(xSegment) == np.ndarray:
+                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x2 - x1)
+            else:
+                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x2 - x1) * np.ones_like(xSegment)
+
+        elif force == 'mv':
+            z1 = segmentDisplacements[2]
+            tau1 = segmentDisplacements[4]
+            z2 = segmentDisplacements[8]
+            tau2 = segmentDisplacements[10]
+
+            svi = self.verticalShearCorrections[segmentIndex]
+
+            polynomialZ1 = -12 * xSegment/segmentLength + 6
+            polynomialTau1 = 6 * xSegment               - (4 + svi) * segmentLength
+            polynomialZ2 =  12 * xSegment/segmentLength - 6
+            polynomialTau2 = 6 * xSegment               + (-2 + svi) * segmentLength
+
+            prefactor = self.youngsModulus * self.verticalAreaMoments[segmentIndex] / ((1 + svi) * segmentLength**2)
+
+            return prefactor * (polynomialZ1 * z1 + polynomialTau1 * tau1 + polynomialZ2 * z2 + polynomialTau2 * tau2)
+
+        elif force == 'sv':
+            z1 = segmentDisplacements[2]
+            tau1 = segmentDisplacements[4]
+            z2 = segmentDisplacements[8]
+            tau2 = segmentDisplacements[10]
+
+            svi = self.verticalShearCorrections[segmentIndex]
+
+            prefactor = self.youngsModulus * self.verticalAreaMoments[segmentIndex] / ((1 + svi) * segmentLength**3)
+
+            shearForceValue = prefactor * (-12 * z1 + 6*segmentLength * tau1 + 12 * z2 + 6*segmentLength * tau2)
+
+            if not type(xSegment) == np.ndarray:
+                return shearForceValue
+            else:
+                return shearForceValue * np.ones_like(xSegment)
+
+        elif force == 'mh':
+            y1 = segmentDisplacements[1]
+            psi1 = segmentDisplacements[5]
+            y2 = segmentDisplacements[7]
+            psi2 = segmentDisplacements[11]
+
+            shi = self.horizontalShearCorrections[segmentIndex]
+
+            polynomialY1 =  12 * xSegment/segmentLength - 6
+            polynomialPsi1 = 6 * xSegment               - (4 + shi) * segmentLength
+            polynomialY2 = -12 * xSegment/segmentLength + 6
+            polynomialPsi2 = 6 * xSegment               + (-2 + shi) * segmentLength
+
+            prefactor = self.youngsModulus * self.horizontalAreaMoments[segmentIndex] / ((1 + shi) * segmentLength**2)
+
+            return prefactor * (polynomialY1 * y1 + polynomialPsi1 * psi1 + polynomialY2 * y2 + polynomialPsi2 * psi2)
+
+        elif force == 'sh':
+            y1 = segmentDisplacements[1]
+            psi1 = segmentDisplacements[5]
+            y2 = segmentDisplacements[7]
+            psi2 = segmentDisplacements[11]
+
+            shi = self.horizontalShearCorrections[segmentIndex]
+
+            prefactor = self.youngsModulus * self.horizontalAreaMoments[segmentIndex] / ((1 + shi) * segmentLength**3)
+
+            shearForceValue = prefactor * (-12 * z1 - 6*segmentLength * tau1 + 12 * z2 - 6*segmentLength * tau2)
+
+            if not type(xSegment) == np.ndarray:
+                return shearForceValue
+            else:
+                return shearForceValue * np.ones_like(xSegment)
+
+        elif force == 't':
+            sys.exit('TODO: Unsupported.')
+
         else:
-            sys.exit('Bending moment must be vertical (v) or horizontal (h).')
-
-        L = segmentLength
-
-        polynomialLinear1 =  (12*xSegment/L**3 -   6/L**2                ) / (1 + shearCorrection)
-        polynomialAngular1 =  (6*xSegment/L**2 -  (4 + shearCorrection)/L) / (1 + shearCorrection)
-        polynomialLinear2 = (-12*xSegment/L**3 +   6/L**2                ) / (1 + shearCorrection)
-        polynomialAngular2 =  (6*xSegment/L**2 + (-2 + shearCorrection)/L) / (1 + shearCorrection)
-
-        bendingMoment = self.youngsModulus * areaMoment * (polynomialLinear1 * linear1 + polynomialAngular1 * angular1 + polynomialLinear2  * linear2 + polynomialAngular2 * angular2)
-
-        return bendingMoment
+            sys.exit('TODO: force must be one of [etc].')
 
 
-    def BendingMoment(self, x, displacements :np.ndarray, plane = 'v'):
+    def InternalForce(self, x: float | np.ndarray, displacements: np.ndarray, force: str):
         """
+        TODO: Update.
         Calculates the vertical or horizontal bending moments at a one or more points within the beam
         given their x coordinates within the beam and the full vector of vertex displacements. Throughout,
         n corresponds to the beam's number of nodes.
@@ -385,41 +447,34 @@ class Beam:
             indicated by `x`, in Nm.
         :rtype: float or (m,)-numpy.ndarray
         """
-        if not (plane == 'v' or plane == 'h'):
-            sys.exit('Bending moment must be vertical (v) or horizontal (h).')
+        if not force in ['a', 'mv', 'sv', 'mh', 'sh', 't']:
+            sys.exit('TODO: force must be one of [etc].')
 
-        if not self.numberNodes*6 == displacements.size:
+        if not self.numberNodes * 6 == displacements.size:
             sys.exit('Wrong size of displacements vector')
 
         nodeXPositionsStartingAtZero = self.nodeXPositions - self.nodeXPositions[0]
         beamLength = nodeXPositionsStartingAtZero[-1]
 
-        if type(x) == np.ndarray:
-            if not np.sort(x) == x:
-                sys.exit('The array of x positions at which the bending moment will be calculated must be sorted.')
-
-            if x[0] < 0 or x[-1] > beamLength:
-                sys.exit('All positions x at which the bending moment will be calculated must be between 0 and the beam length.')
-        else:
+        if not type(x) == np.ndarray:
             if x < 0 or x > beamLength:
                 sys.exit('The position x at which the bending moment will be calculated must be between 0 and the beam length.')
 
             aftVertexIndex = np.searchsorted(nodeXPositionsStartingAtZero, x, side = 'right')-1
-            segmentLength = self.segmentLengths[aftVertexIndex]
             coordinateSegment = x - nodeXPositionsStartingAtZero[aftVertexIndex]
 
             segmentDisplacements = displacements[6*aftVertexIndex : 6*(aftVertexIndex + 2)]
 
-            if plane == 'v':
-                verticalAreaMoment = self.verticalAreaMoments[aftVertexIndex]
-                verticalShearCorrection = self.verticalShearCorrections[aftVertexIndex]
-                return self.SegmentBendingMoment(coordinateSegment, segmentLength, segmentDisplacements, verticalAreaMoment, verticalShearCorrection, 'v')
-            else:
-                horizontalAreaMoment = self.horizontalAreaMoments[aftVertexIndex]
-                horizontalShearCorrection = self.horizontalShearCorrections[aftVertexIndex]
-                return self.SegmentBendingMoment(coordinateSegment, segmentLength, segmentDisplacements, horizontalAreaMoment, horizontalShearCorrection, 'h')
+            return self.SegmentInternalForce(coordinateSegment, segmentDisplacements, aftVertexIndex, force)
 
-        bendingMomentDistribution = np.zeros([x.size], dtype = np.complex128)
+
+        if not np.all(np.sort(x) == x):
+            sys.exit('The array of x positions at which the bending moment will be calculated must be sorted.')
+
+        if x[0] < 0 or x[-1] > beamLength:
+            sys.exit('All positions x at which the bending moment will be calculated must be between 0 and the beam length.')
+
+        internalForceDistribution = np.zeros([x.size], dtype = np.complex128)
 
         for i in range(self.numberSegments):
             if i == self.numberSegments - 1:
@@ -431,18 +486,10 @@ class Beam:
 
             if not coordinatesSegment.size == 0:
                 segmentDisplacements = displacements[6*i : 6*(i + 2)]
-                segmentLength = self.segmentLengths[i]
 
-                if plane == 'v':
-                    verticalAreaMoment = self.verticalAreaMoments[i]
-                    verticalShearCorrection = self.verticalShearCorrections[i]
-                    bendingMomentDistribution[mask] = self.SegmentBendingMoment(coordinatesSegment, segmentLength, segmentDisplacements, verticalAreaMoment, verticalShearCorrection, 'v')
-                else:
-                    horizontalAreaMoment = self.horizontalAreaMoments[i]
-                    horizontalShearCorrection = self.horizontalShearCorrections[i]
-                    bendingMomentDistribution[mask] = self.SegmentBendingMoment(coordinatesSegment, segmentLength, segmentDisplacements, horizontalAreaMoment, horizontalShearCorrection, 'h')
+                internalForceDistribution[mask] = self.SegmentInternalForce(coordinatesSegment, segmentDisplacements, i, force)
 
-        return bendingMomentDistribution
+        return internalForceDistribution
 
 
     def CalculateNodalDOFs(self, hullMesh : cpt.Mesh):

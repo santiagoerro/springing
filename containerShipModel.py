@@ -146,7 +146,7 @@ midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 for i in range(omegas.size):
     displacements = np.zeros([6*beam.numberNodes])
     displacements = waveHeight * springingResults.displacementAmplitudes.values[i, 0, :]
-    midshipsBendingMoments[i] = beam.BendingMoment(hullLength/2, displacements)
+    midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
 
 bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight)
@@ -155,6 +155,12 @@ bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity *
 wavenumbers = omegas**2 / gravity
 wavelengths = 2 * np.pi / wavenumbers
 
+# bending moment and shear force distributions
+omegaIndex = 3
+x = np.linspace(0, hullLength, 500)
+displacements = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, 0, :]
+bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
+shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
 
 
 # OUTPUT
@@ -188,19 +194,35 @@ plt.xlim([0,1.75])
 plt.ylim([0, 0.03])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
+plt.savefig('solutions/nodal/midshipsBendingMomentCoefs.png')
+
+plt.figure()
+plt.title('Vertical bending moment distribution for omega = %.2f rad/s'%omegas[omegaIndex])
+plt.plot(x, np.imag(bendingMomentDistribution), 'g', label = 'Imaginary part')
+plt.plot(x, np.real(bendingMomentDistribution), 'k', label = 'Real part')
+plt.xlabel('x [m]')
+plt.ylabel('Vertical bending moment [Nm]')
+plt.legend()
+plt.savefig('solutions/nodal/bendingMomentDistribution.png')
+
+plt.figure()
+plt.title('Vertical shear force distribution for omega = %.2f rad/s'%omegas[omegaIndex])
+plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part')
+plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part')
+plt.xlabel('x [m]')
+plt.ylabel('Vertical shear force [Nm]')
+plt.legend()
+plt.savefig('solutions/nodal/shearForceDistribution.png')
 
 plt.show()
 
-
-omegaIndex = 4
-waveDirectionIndex = 0
 
 motion = {}
 
 dofIndex = 0
 
 for dof in hullBody.dofs.keys():
-    motion[dof] = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, waveDirectionIndex, dofIndex]
+    motion[dof] = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, 0, dofIndex]
     dofIndex += 1
 
 animation = hullBody.animate(motion = motion, loop_duration = 1)
