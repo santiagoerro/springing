@@ -704,7 +704,7 @@ class Beam:
 
         numberNodalDOFs = self.stiffnessMatrix.shape[0]
 
-        if initialIndex + numberModes >= numberNodalDOFs:
+        if initialIndex + numberModes > numberNodalDOFs:
             sys.exit('The requested number of modes is greater than the number of available real frequency modes.')
 
         requestedDryNaturalFrequenciesSquared = np.zeros([numberModes])
@@ -856,7 +856,7 @@ class ModalSpringingResults:
         stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
         self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
 
-        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (modalHydrodynamicResults.added_mass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * modalHydrodynamicResults.radiation_damping + (self.stiffnessMatrix + modalHydrostaticStiffness)
+        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (modalHydrodynamicResults.added_mass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * modalHydrodynamicResults.radiation_damping*2 + (self.stiffnessMatrix + modalHydrostaticStiffness)
 
         self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'radiating_dof', 'influenced_dof'])
 

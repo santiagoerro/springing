@@ -2,6 +2,7 @@ import numpy as np
 import capytaine as cpt
 import xarray as xr
 import sys
+import os
 from scipy.linalg import eigh
 import springing as spr
 from matplotlib import pyplot as plt
@@ -44,7 +45,7 @@ youngsModulus = 0.215e10
 shearModulus = youngsModulus / (2 * (1 + 0.26))
 
 # wave characteristics
-waveHeight = 0.025
+waveHeight = 0.05
 
 waterDepths = np.array([1.8])
 omegas = np.array([4.50, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 8.22])
@@ -149,7 +150,7 @@ for i in range(omegas.size):
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
 
-bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight)
+bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight/2)
 
 # wavelengths
 wavenumbers = omegas**2 / gravity
@@ -161,6 +162,7 @@ x = np.linspace(0, hullLength, 500)
 displacements = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
 shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
+
 
 
 # OUTPUT
@@ -187,13 +189,49 @@ for i in range(omegas.size):
 print()
 
 
+# paper results
+import pandas as pd
+rho = 1000 #Water density (kg/m^3)
+g = 9.81 #Gravitational acceleration (m/s^2)
+L = 1.52 #Model length (m)
+B = 0.22 #Model breadth (m)
+
+S2M = [132365.4187, 155869.0311, 156046.5947, 158543.3094, 154959.3894]
+
+Strain2 = []
+
+Strain2.append([0.023634916, 0.029264058, 0.029426426, 0.031062434, 0.031127915, 0.031826421, 0.031822112, 0.02310694])
+Strain2.append([0.02380636, 0.029098951, 0.030430322, 0.031381076, 0.031749035, 0.03113457, 0.030265477, 0.022310203])
+Strain2.append([0.024182254, 0.028697271, 0.02985464, 0.031329122, 0.031449131, 0.030472916, 0.031032499, 0.024203041])
+
+MARS_responses = pd.read_pickle('validation/MARS_barge_response.pkl')
+
+lL = [2.0, 1.3, 1.2, 1.1, 1.0, 0.9, 0.8, 0.6]
+Ll = [1/length for length in lL]
+Ll_full = MARS_responses['L/lambda']
+
+midshipsBendingMomentCoefsExperimental = [[S2M[2] * strain ** 2 / (rho * g * L ** 2 * B) for strain in Strain_Run] for Strain_Run in Strain2]
+midshipsBendingMomentCoefs2DNumerical = [moment / (rho * g * L ** 2 * B) for moment in MARS_responses['BM 1/2']]
+
+if not os.path.exists('solutions/nodal'):
+    os.makedirs('solutions/nodal')
+
 plt.figure()
 plt.title('Midships bending moment coefficient for different waves')
-plt.plot(hullLength/wavelengths, bendingMomentCoefs, 'ko')
+plt.plot(hullLength/wavelengths, bendingMomentCoefs, 'ko', label = 'Capytaine Hydroelasticity')
+flag = True
+for series in midshipsBendingMomentCoefsExperimental:
+    if flag:
+        flag = False
+        plt.plot(Ll, series, 'bo', label = 'Experiment')
+    else:
+        plt.plot(Ll, series, 'bo')
+plt.plot(Ll_full, midshipsBendingMomentCoefs2DNumerical, 'k--', label = '2D Hydroelascity')
 plt.xlim([0,1.75])
-plt.ylim([0, 0.03])
+plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
+plt.legend()
 plt.savefig('solutions/nodal/midshipsBendingMomentCoefs.png')
 
 plt.figure()
