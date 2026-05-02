@@ -474,7 +474,7 @@ class Beam:
         if x[0] < 0 or x[-1] > beamLength:
             sys.exit('All positions x at which the bending moment will be calculated must be between 0 and the beam length.')
 
-        internalForceDistribution = np.zeros([x.size], dtype = np.complex128)
+        internalForceDistribution = np.zeros([x.size], dtype = displacements.dtype)
 
         for i in range(self.numberSegments):
             if i == self.numberSegments - 1:
