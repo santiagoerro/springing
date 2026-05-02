@@ -209,7 +209,7 @@ lL = [2.0, 1.3, 1.2, 1.1, 1.0, 0.9, 0.8, 0.6]
 Ll = [1/length for length in lL]
 Ll_full = MARS_responses['L/lambda']
 
-midshipsBendingMomentCoefsExperimental = [[S2M[0] * strain ** 2 / (rho * g * L ** 2 * B) for strain in Strain_Run] for Strain_Run in Strain2]
+midshipsBendingMomentCoefsExperimental = [[S2M[2] * strain ** 2 / (rho * g * L ** 2 * B) for strain in Strain_Run] for Strain_Run in Strain2]
 midshipsBendingMomentCoefs2DNumerical = [moment / (rho * g * L ** 2 * B) for moment in MARS_responses['BM 1/2']]
 
 if not os.path.exists('solutions/%dmodes'%numberModes):
