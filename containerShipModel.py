@@ -26,8 +26,8 @@ hullDepth = 0.13
 hullDisplacement = 15.6
 
 # mass distribution
-pointMasses = np.array([0.5, 0.5, 0.5, 1, 2, 1, 1])
-pointMassStations = np.array([1, 2.5, 4.5, 6.5, 8, 15.5, 17.5]) # ship divided into 20 stations
+pointMasses = np.array([0.5, 0.5, 0.5, 1, 2, 2.77, 1, 1])
+pointMassStations = np.array([1, 2.5, 4.5, 6.5, 8, 12, 15.5, 17.5]) # ship divided into 20 stations
 
 # beam properties
 beamSegments = 40
@@ -38,11 +38,13 @@ horizontalAreaMoments = np.ones([beamSegments]) * 0.24325e-04
 sectionalAreas = np.ones([beamSegments]) * 0.36945e-02
 verticalShearAreaFractions = np.ones([beamSegments]) * 0.32148
 horizontalShearAreaFractions = np.ones([beamSegments]) * 0.28385
+torsionConstants = np.ones([beamSegments]) * 1.5223e-06
+warpingConstants = np.ones([beamSegments]) * 4.0778e-08
 zCentroidOverBottom = 0.45434e-01
 
 # material properties
 youngsModulus = 0.215e10
-shearModulus = youngsModulus / (2 * (1 + 0.26))
+shearModulus = youngsModulus / (2 * (1 + 0.22))
 
 # wave characteristics
 waveHeight = 0.05
@@ -74,13 +76,15 @@ beamDefinition['verticalAreaMoments'] = verticalAreaMoments
 beamDefinition['horizontalAreaMoments'] = horizontalAreaMoments
 beamDefinition['verticalTimoshenkoCoefs'] = verticalShearAreaFractions
 beamDefinition['horizontalTimoshenkoCoefs'] = horizontalShearAreaFractions
-beamDefinition['torsionConstants'] = np.ones([beamSegments])
-beamDefinition['warpingConstants'] = np.ones([beamSegments])
+beamDefinition['torsionConstants'] = torsionConstants
+beamDefinition['warpingConstants'] = warpingConstants
 beamDefinition['youngsModulus'] = youngsModulus
 beamDefinition['shearModulus'] = shearModulus
 beamDefinition['zNeutralAxis'] = zNeutralAxis
 beamDefinition['zTwistCenter'] = zNeutralAxis
 beamDefinition['linearDensities'] = linearDensitiesBeam
+beamDefinition['zCentersOfMass'] = np.ones([beamSegments]) * zNeutralAxis
+beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.4)**2
 
 # beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
 beam = spr.Beam(beamDefinition)
@@ -91,10 +95,9 @@ segmentsPerHalfStation = beamSegments / 40
 for i in range(pointMasses.size):
     vertex = int(pointMassStations[i] * 2 * segmentsPerHalfStation)
 
-    beam.massMatrix[6 * vertex    , 6 * vertex    ] += pointMasses[i]
-    beam.massMatrix[6 * vertex + 1, 6 * vertex + 1] += pointMasses[i]
-    beam.massMatrix[6 * vertex + 2, 6 * vertex + 2] += pointMasses[i]
-
+    beam.massMatrix[7 * vertex    , 7 * vertex    ] += pointMasses[i]
+    beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
+    beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
 
 # dry natural frequencies
 dryNaturalFrequenciesSquared, dryVibrationModes = eigh(beam.stiffnessMatrix, beam.massMatrix)
@@ -134,8 +137,12 @@ hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
-# hydrodynamicResults.to_netcdf("data/hydrodynamics.nc")
-# hydrodynamicResults = xr.open_dataset("data/hydrodynamics.nc")
+np.save('data/added_mass_nodal.npy', hydrodynamicResults.added_mass.values)
+np.save('data/radiation_damping_nodal.npy', hydrodynamicResults.radiation_damping.values)
+np.save('data/excitation_force_nodal.npy', hydrodynamicResults.excitation_force.values)
+np.save('data/omega_nodal.npy', hydrodynamicResults.omega.values)
+np.save('data/dryNaturalFrequenciesSquared_nodal.npy', dryNaturalFrequenciesSquared)
+np.save('data/dryVibrationModesNormalized_nodal.npy', dryVibrationModes)
 
 # coupling of hydrodynamic and structural results, springing results
 springingResults = spr.NodalSpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)
@@ -145,7 +152,6 @@ midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = np.zeros([6*beam.numberNodes])
     displacements = waveHeight * springingResults.displacementAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
@@ -248,7 +254,7 @@ plt.title('Vertical shear force distribution for omega = %.2f rad/s'%omegas[omeg
 plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part')
 plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part')
 plt.xlabel('x [m]')
-plt.ylabel('Vertical shear force [Nm]')
+plt.ylabel('Vertical shear force [N]')
 plt.legend()
 plt.savefig('solutions/nodal/shearForceDistribution.png')
 

@@ -42,10 +42,16 @@ class Beam:
             - `'zNeutralAxis'`: `float`, the vertical position of the beam's neutral axis over the water's free surface, in m.
             - `'zTwistCenter'`: `float`, the vertical position of the beam's center of twist over the water's free surface, in m.
             - `'massMatrix'`: `(6*(n+1),6*(n+1))-numpy.ndarray` optional, FEM structural mass matrix of the beam, in SI units. To be provided
-            if the user wishes to input it manually.
+            if the user wishes to input it manually. Otherwise, `'linearDensities'`, `'zCentersOfMass'` and `'rollInertias'` must
+            be provided.
             - `'linearDensities'`: `(n,)-numpy.ndarray` optional, `i`-th component: linear mass density of the `i`-th segment, in
-            kg/m. Must be provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`. The FEM
-            mass matrix is then calculated from these linear mass densities.
+            kg/m. Must be provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
+            - `'zCentersOfMass'`: `(n,)-numpy.ndarray` optional, `i`-th component: vertical position over the free surface of the
+            center of mass of cross-sections on the `i`-th segment of the beam, in m. Must be provided if the FEM structural mass
+            matrix is not manually given by the user in `'massMatrix'`.
+            - `'rollInertias'`: `(n,)-numpy.ndarray` optional, `i`-th component: mass moment of inertia of the sections in the
+            `i`-th segment around an axis parallel to the x-axis that passses through their center of mass, in kg m2 / m. Must be
+            provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
             - `'stiffnessMatrix'`: `(6*(n+1),6*(n+1))-numpy.ndarray` optional, FEM stiffness matrix of the beam, in SI units. To be provided
             if the user wishes to input it manually. If it is not provided, it will be calculated from the beam's structural properties.
         """
@@ -74,7 +80,7 @@ class Beam:
                 sys.exit('Invalid beam definition: %s must be a numpy ndarray.'%key)
             if not array.shape == shape:
                 sys.exit('Invalid beam definition: %s must be a %s-array.'%(key, str(shape)))
-            
+
             return array
 
 
@@ -100,17 +106,75 @@ class Beam:
         self.warpingWavenumbers = np.sqrt(self.shearModulus * self.torsionConstants / (self.youngsModulus * self.warpingConstants))
         self.warpingWavenumbersSegmentLengths = self.warpingWavenumbers * self.segmentLengths
 
+        self.splineLimit = np.zeros([self.numberSegments], dtype = bool)
+        self.boundedBasisCoefsForStableBasisW0 = np.zeros([self.numberSegments, 4])
+        self.boundedBasisCoefsForStableBasisW1 = np.zeros([self.numberSegments, 4])
+
+        for segment in range(0, self.numberSegments):
+            a = self.warpingWavenumbersSegmentLengths[segment]
+
+            if a < 0.003:
+                self.splineLimit[segment] = True
+
+            if a < 0.3:
+                aSquare = a**2
+                aCube = a**3
+                aFourth = a**4
+                aFifth = a**5
+                aSixth = a**6
+                aSeventh = a**7
+
+                c11w0 = 4/aSquare + 2/15 - 11*aSquare/6300 + aFourth/27000 - 509*aSixth/582120000
+                c12w0 = -6/aSquare - 1/10 + aSquare/1400 - aFourth/126000 + 37*aSixth/388080000
+                c13w0 = 3/aCube + 1/aSquare + 1/(20*a) - 1/60 - a/2800 + 13*aSquare/25200 + aCube/252000 - 11*aFourth/756000 - 37*aFifth/776160000 + 907*aSixth/2328480000 + 59*aSeventh/100900800000
+                c14w0 = -3/aCube - 2/aSquare - 11/(20*a) - 1/15 + a/2800 + 11*aSquare/12600 - aCube/252000 - aFourth/54000 + 37*aFifth/776160000 + 509*aSixth/1164240000 - 59*aSeventh/100900800000
+
+                c11w1 = 2/aSquare - 1/30 + 13*aSquare/12600 - 11*aFourth/378000 + 907*aSixth/1164240000
+                c13w1 = 3/aCube + 2/aSquare + 11/(20*a) + 1/15 - a/2800 - 11*aSquare/12600 + aCube/252000 + aFourth/54000 - 37*aFifth/776160000 - 509*aSixth/1164240000 + 59*aSeventh/100900800000
+                c14w1 = -3/aCube - 1/aSquare - 1/(20*a) + 1/60 + a/2800 - 13*aSquare/25200 - aCube/252000 + 11*aFourth/756000 + 37*aFifth/776160000 - 907*aSixth/2328480000 - 59*aSeventh/100900800000
+            elif a > 320:
+                denominator = -a**2 + 2*a
+
+                c11w0 = (-a + 1) / denominator
+                c12w0 = -1 / (a - 2)
+                c13w0 = -1 / denominator
+                c14w0 = -c11w0
+
+                c11w1 = -1 / denominator
+                c13w1 = (-a + 1) / denominator
+                c14w1 = -c11w1
+            else:
+                expa = np.exp(a)
+                exp2a = np.exp(2*a)
+                denominator = a**2 + 2*a - a**2*exp2a + 2*a*exp2a - 4*a*expa
+
+                c11w0 = (-a - a*exp2a + exp2a - 1) / denominator
+                c12w0 = (-expa + 1) / (a + a*expa - 2*expa + 2)
+                c13w0 = (a*expa - exp2a + expa) / denominator
+                c14w0 = (a*exp2a - exp2a + expa) / denominator
+
+                c11w1 = (-exp2a + 2*a*expa + 1) / denominator
+                c13w1 = (-a*exp2a + exp2a - expa) / denominator
+                c14w1 = (exp2a - a*expa - expa) / denominator
+
+            c12w1 = c12w0
+
+            self.boundedBasisCoefsForStableBasisW0[segment, :] = np.array([c11w0, c12w0, c13w0, c14w0])
+            self.boundedBasisCoefsForStableBasisW1[segment, :] = np.array([c11w1, c12w1, c13w1, c14w1])
+
 
         matrixShape = (6 * self.numberNodes, 6 * self.numberNodes)
 
         if 'massMatrix' in beamDefinition:
             self.massMatrix = GetArrayCheck(beamDefinition, 'massMatrix', matrixShape)
         else:
-            if not 'linearDensities' in beamDefinition:
-                sys.exit('Invalid beam definition: if the mass matrix is not provided, linearDensities must be specified for the mass matrix to be calculated.')
+            if not 'linearDensities' in beamDefinition or not 'zCentersOfMass' in beamDefinition or not 'rollInertias' in beamDefinition:
+                sys.exit('Invalid beam definition: if the mass matrix is not provided, linearDensities, zCentersOfMass and rollInertias must be specified for the mass matrix to be calculated.')
             linearDensities = GetArrayCheck(beamDefinition, 'linearDensities', segmentsShape)
+            zCentersOfMass = GetArrayCheck(beamDefinition, 'zCentersOfMass', segmentsShape)
+            rollInertias = GetArrayCheck(beamDefinition, 'rollInertias', segmentsShape)
 
-            self.massMatrix = self.UniformlyDistributedMassMatrix(linearDensities)
+            self.massMatrix = self.UniformlyDistributedMassMatrix(linearDensities, zCentersOfMass, rollInertias)
 
         if 'stiffnessMatrix' in beamDefinition:
             self.stiffnessMatrix = GetArrayCheck(beamDefinition, 'stiffnessMatrix', matrixShape)
@@ -118,7 +182,7 @@ class Beam:
             self.stiffnessMatrix = self.StiffnessMatrix()
 
 
-    def UniformlyDistributedMassMatrix(self, linearDensities :np.ndarray):
+    def UniformlyDistributedMassMatrix(self, linearDensities: np.ndarray, zCentersOfMass: np.ndarray, rollInertias: np.ndarray):
         """
         Creates a mass matrix for the Finite Elements Method, assuming linearly uniformly distributed
         mass within each segment. Throughout, `n` corresponds to the beam's number of nodes.
@@ -126,15 +190,44 @@ class Beam:
         :param linearDensities: Array. `i`-th component: linear mass density of the `i`-th segment of the beam, in kg/m.
         :type linearDensities: (n-1,)-numpy.ndarray
 
-        :returns: Mass matrix for the FEM analysis.
-        :rtype: (6*n, 6*n)-numpy.ndarray
-        """
-        if linearDensities.size != self.numberSegments:
-            sys.exit('Invalid linear densities definition: number of linear densities provided does not match number of beam segments.')
+        :param zCentersOfMass: Array. `i`-th component: vertical position over the free surface of the center of mass of cross-sections on the `i`-th segment of the beam, in m.
+        :type zCentersOfMass: (n-1,)-numpy.ndarray
 
-        massMatrix = np.zeros([self.numberNodes * 6, self.numberNodes * 6])
+        :param rollInertias: Array. `i`-th component: mass moment of inertia of the sections in the `i`-th segment around an axis parallel to the x-axis that passses through their center of mass, in kg m2 / m.
+        :type rollInertias: (n-1,)-numpy.ndarray
+
+        :returns: Mass matrix for the FEM analysis.
+        :rtype: (7*n, 7*n)-numpy.ndarray
+        """
+
+        massMatrix = np.zeros([7 * self.numberNodes, 7 * self.numberNodes])
+
+        x0 = 0
+        y0 = 1
+        z0 = 2
+        r0 = 3
+        w0 = 4
+        tau0 = 5
+        psi0 = 6
+        x1 = 7
+        y1 = 8
+        z1 = 9
+        r1 = 10
+        w1 = 11
+        tau1 = 12
+        psi1 = 13
+
+        assemblyBasisToStableBasisCoefsMatrix = np.eye(14)
+        # in the assembly basis, the constrained warping roll 0 dof (which substitutes r0 in place) picks up +w0 and +w1
+        assemblyBasisToStableBasisCoefsMatrix[w0, r0] = 1
+        assemblyBasisToStableBasisCoefsMatrix[w1, r0] = 1
+        # in the assembly basis, the constrained warping roll 1 dof (which substitutes r1 in place) picks up -w0 and -w1
+        assemblyBasisToStableBasisCoefsMatrix[w0, r1] = -1
+        assemblyBasisToStableBasisCoefsMatrix[w1, r1] = -1
 
         for i in range(self.numberSegments):
+            segmentMassMatrixStableBasis = np.zeros([14, 14])
+
             segmentLength = self.segmentLengths[i]
             segmentMass = linearDensities[i] * segmentLength
 
@@ -143,162 +236,237 @@ class Beam:
             shi = self.horizontalShearCorrections[i]
             shi2 = shi**2
 
-            x1 = 6*i
-            y1 = 6*i + 1
-            z1 = 6*i + 2
-            phi1 = 6*i + 3
-            tau1 = 6*i + 4
-            psi1 = 6*i + 5
-            x2 = 6*i + 6
-            y2 = 6*i + 7
-            z2 = 6*i + 8
-            phi2 = 6*i + 9
-            tau2 = 6*i + 10
-            psi2 = 6*i + 11
-
             # axial motion
-            massMatrix[x1,x1] += segmentMass / 3
-            massMatrix[x1,x2] += segmentMass / 6
-            massMatrix[x2,x1] += segmentMass / 6
-            massMatrix[x2,x2] += segmentMass / 3
+            segmentMassMatrixStableBasis[x0,x0] = segmentMass / 3
+            segmentMassMatrixStableBasis[x0,x1] = segmentMass / 6
+            segmentMassMatrixStableBasis[x1,x0] = segmentMass / 6
+            segmentMassMatrixStableBasis[x1,x1] = segmentMass / 3
 
             # vertical bending motion
             verticalFactor = segmentMass / (840 * (svi2 + 2 * svi + 1))
 
-            massMatrix[z1, z1] += verticalFactor * (280 * svi2 + 588 * svi + 312)
-            massMatrix[z1, z2] += verticalFactor * (140 * svi2 + 252 * svi + 108)
-            massMatrix[z2, z1] += verticalFactor * (140 * svi2 + 252 * svi + 108)
-            massMatrix[z2, z2] += verticalFactor * (280 * svi2 + 588 * svi + 312)
+            segmentMassMatrixStableBasis[z0, z0] = verticalFactor * (280 * svi2 + 588 * svi + 312)
+            segmentMassMatrixStableBasis[z0, z1] = verticalFactor * (140 * svi2 + 252 * svi + 108)
+            segmentMassMatrixStableBasis[z1, z0] = verticalFactor * (140 * svi2 + 252 * svi + 108)
+            segmentMassMatrixStableBasis[z1, z1] = verticalFactor * (280 * svi2 + 588 * svi + 312)
 
-            massMatrix[z1  , tau1] += verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
-            massMatrix[tau1, z1  ] += verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
-            massMatrix[z1  , tau2] += verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
-            massMatrix[tau2, z1  ] += verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
-            massMatrix[tau1, z2  ] += verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
-            massMatrix[z2  , tau1] += verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
-            massMatrix[z2  , tau2] += verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
-            massMatrix[tau2, z2  ] += verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
+            segmentMassMatrixStableBasis[z0  , tau0] = verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
+            segmentMassMatrixStableBasis[tau0, z0  ] = verticalFactor * (-35 * svi2 - 77 * svi - 44) * segmentLength
+            segmentMassMatrixStableBasis[z0  , tau1] = verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
+            segmentMassMatrixStableBasis[tau1, z0  ] = verticalFactor * ( 35 * svi2 + 63 * svi + 26) * segmentLength
+            segmentMassMatrixStableBasis[tau0, z1  ] = verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
+            segmentMassMatrixStableBasis[z1  , tau0] = verticalFactor * (-35 * svi2 - 63 * svi - 26) * segmentLength
+            segmentMassMatrixStableBasis[z1  , tau1] = verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
+            segmentMassMatrixStableBasis[tau1, z1  ] = verticalFactor * ( 35 * svi2 + 77 * svi + 44) * segmentLength
 
-            massMatrix[tau1, tau1] += verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
-            massMatrix[tau1, tau2] += verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
-            massMatrix[tau2, tau1] += verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
-            massMatrix[tau2, tau2] += verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
+            segmentMassMatrixStableBasis[tau0, tau0] = verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
+            segmentMassMatrixStableBasis[tau0, tau1] = verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
+            segmentMassMatrixStableBasis[tau1, tau0] = verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
+            segmentMassMatrixStableBasis[tau1, tau1] = verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
 
             # horizontal bending motion
             horizontalFactor = segmentMass / (840 * (shi2 + 2 * shi + 1))
 
-            massMatrix[y1, y1] += horizontalFactor * (280 * shi2 + 588 * shi + 312)
-            massMatrix[y1, y2] += horizontalFactor * (140 * shi2 + 252 * shi + 108)
-            massMatrix[y2, y1] += horizontalFactor * (140 * shi2 + 252 * shi + 108)
-            massMatrix[y2, y2] += horizontalFactor * (280 * shi2 + 588 * shi + 312)
+            segmentMassMatrixStableBasis[y0, y0] = horizontalFactor * (280 * shi2 + 588 * shi + 312)
+            segmentMassMatrixStableBasis[y0, y1] = horizontalFactor * (140 * shi2 + 252 * shi + 108)
+            segmentMassMatrixStableBasis[y1, y0] = horizontalFactor * (140 * shi2 + 252 * shi + 108)
+            segmentMassMatrixStableBasis[y1, y1] = horizontalFactor * (280 * shi2 + 588 * shi + 312)
 
-            massMatrix[y1  , psi1] += horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
-            massMatrix[psi1, y1  ] += horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
-            massMatrix[y1  , psi2] += horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
-            massMatrix[psi2, y1  ] += horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
-            massMatrix[psi1, y2  ] += horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
-            massMatrix[y2  , psi1] += horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
-            massMatrix[y2  , psi2] += horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
-            massMatrix[psi2, y2  ] += horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
+            segmentMassMatrixStableBasis[y0  , psi0] = horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
+            segmentMassMatrixStableBasis[psi0, y0  ] = horizontalFactor * ( 35 * shi2 + 77 * shi + 44) * segmentLength
+            segmentMassMatrixStableBasis[y0  , psi1] = horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
+            segmentMassMatrixStableBasis[psi1, y0  ] = horizontalFactor * (-35 * shi2 - 63 * shi - 26) * segmentLength
+            segmentMassMatrixStableBasis[psi0, y1  ] = horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
+            segmentMassMatrixStableBasis[y1  , psi0] = horizontalFactor * ( 35 * shi2 + 63 * shi + 26) * segmentLength
+            segmentMassMatrixStableBasis[y1  , psi1] = horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
+            segmentMassMatrixStableBasis[psi1, y1  ] = horizontalFactor * (-35 * shi2 - 77 * shi - 44) * segmentLength
 
-            massMatrix[psi1, psi1] += horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
-            massMatrix[psi1, psi2] += horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
-            massMatrix[psi2, psi1] += horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
-            massMatrix[psi2, psi2] += horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
+            segmentMassMatrixStableBasis[psi0, psi0] = horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
+            segmentMassMatrixStableBasis[psi0, psi1] = horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
+            segmentMassMatrixStableBasis[psi1, psi0] = horizontalFactor * (-7 * shi2 - 14 * shi - 6) * segmentLength**2
+            segmentMassMatrixStableBasis[psi1, psi1] = horizontalFactor * ( 7 * shi2 + 14 * shi + 8) * segmentLength**2
 
-            # torsional motion: TODO
-            massMatrix[phi1, phi1] += segmentMass / 3
-            massMatrix[phi1, phi2] += segmentMass / 6
-            massMatrix[phi2, phi1] += segmentMass / 6
-            massMatrix[phi2, phi2] += segmentMass / 3
+            # torsional motion
+            fullTwistInertiaL = (rollInertias[i] + linearDensities[i] * (zCentersOfMass[i] - self.zTwistCenter)**2) * segmentLength
+
+            segmentMassMatrixStableBasis[r0, r0] = fullTwistInertiaL / 3
+            segmentMassMatrixStableBasis[r0, r1] = fullTwistInertiaL / 6
+            segmentMassMatrixStableBasis[r1, r0] = fullTwistInertiaL / 6
+            segmentMassMatrixStableBasis[r1, r1] = fullTwistInertiaL / 3
+
+            a = self.warpingWavenumbersSegmentLengths[i]
+
+            if a <= 0:
+                sys.exit('The product of the warping wavenumber and the segment length must not be zero on any segment.')
+            elif a > 165:
+                denominator = 6*a**3*(a**2 - 4 * a + 4)
+
+                segmentMassMatrixStableBasis[w0, w0] = fullTwistInertiaL * (2*a**3 - 15*a**2 + 36*a - 18) / denominator
+                segmentMassMatrixStableBasis[w0, w1] = fullTwistInertiaL * (-a**3 + 6*a**2 - 12*a + 18) / denominator
+
+                segmentMassMatrixStableBasis[r0, w0] = fullTwistInertiaL * (2*a**2 - 9*a + 12)/(6*a**2*(a - 2))
+                segmentMassMatrixStableBasis[r0, w1] = fullTwistInertiaL * (-a + 3)/(6*a*(a - 2))
+            elif a < 0.68:
+                segmentMassMatrixStableBasis[w0, w0] = fullTwistInertiaL * ( 1/105 - a**2/3150 + 149*a**4/14553000 - 361*a**6/1135134000 + 45691*a**8/4767562800000)
+                segmentMassMatrixStableBasis[w0, w1] = fullTwistInertiaL * (-1/140 + a**2/3600 - 559*a**4/58212000 + 509*a**6/1651104000 - 13847*a**8/1466942400000)
+
+                segmentMassMatrixStableBasis[r0, w0] = fullTwistInertiaL * ( 1/20 - 19*a**2/25200 + 13*a**4/756000 - 109*a**6/258720000 + 28703*a**8/2724321600000)
+                segmentMassMatrixStableBasis[r0, w1] = fullTwistInertiaL * (-1/30 +    a**2/1575  -    a**4/63000  +  59*a**6/145530000 -  7043*a**8/681080400000)
+            else:
+                expa = np.exp(a)
+                exp2a = np.exp(2 * a)
+                exp3a = np.exp(3 * a)
+                exp4a = np.exp(4 * a)
+                denominator = (6*a**3*(a**2*exp4a - 2*a**2*exp2a + a**2 - 4*a*exp4a + 8*a*exp3a - 8*a*expa + 4*a + 4*exp4a - 16*exp3a + 24*exp2a - 16*expa + 4))
+
+                segmentMassMatrixStableBasis[w0, w0] = fullTwistInertiaL * (2*a**3*exp4a + 4*a**3*exp3a + 24*a**3*exp2a + 4*a**3*expa + 2*a**3 - 15*a**2*exp4a - 24*a**2*exp3a + 24*a**2*expa + 15*a**2 + 36*a*exp4a - 36*a*exp3a - 36*a*expa + 36*a - 18*exp4a + 36*exp3a - 36*expa + 18) / denominator
+                segmentMassMatrixStableBasis[w0, w1] = fullTwistInertiaL * (-a**3*exp4a - 14*a**3*exp3a - 6*a**3*exp2a - 14*a**3*expa - a**3 + 6*a**2*exp4a + 42*a**2*exp3a - 42*a**2*expa - 6*a**2 - 12*a*exp4a - 60*a*exp3a + 144*a*exp2a - 60*a*expa - 12*a + 18*exp4a - 36*exp3a + 36*expa - 18) / denominator
+
+                segmentMassMatrixStableBasis[r0, w0] = fullTwistInertiaL * (2*a**2*exp2a + 2*a**2*expa + 2*a**2 - 9*a*exp2a + 9*a + 12*exp2a - 24*expa + 12)/(6*a**2*(a*exp2a - a - 2*exp2a + 4*expa - 2))
+                segmentMassMatrixStableBasis[r0, w1] = fullTwistInertiaL * (-a*exp2a - 4*a*expa - a + 3*exp2a - 3)/(6*a*(a*exp2a - a - 2*exp2a + 4*expa - 2))
+
+            segmentMassMatrixStableBasis[w1, w1] = segmentMassMatrixStableBasis[w0, w0]
+            segmentMassMatrixStableBasis[w1, w0] = segmentMassMatrixStableBasis[w0, w1]
+
+            segmentMassMatrixStableBasis[r1, w0] = -segmentMassMatrixStableBasis[r0, w1]
+            segmentMassMatrixStableBasis[r1, w1] = -segmentMassMatrixStableBasis[r0, w0]
+
+            segmentMassMatrixStableBasis[w0, r0] = segmentMassMatrixStableBasis[r0, w0]
+            segmentMassMatrixStableBasis[w1, r0] = segmentMassMatrixStableBasis[r0, w1]
+            segmentMassMatrixStableBasis[w0, r1] = segmentMassMatrixStableBasis[r1, w0]
+            segmentMassMatrixStableBasis[w1, r1] = segmentMassMatrixStableBasis[r1, w1]
+            
+            segmentMassMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentMassMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
+
+            massMatrix[7 * i : 7 * (i + 2), 7 * i : 7 * (i + 2)] += segmentMassMatrixAssemblyBasis
 
         return massMatrix
 
 
     def StiffnessMatrix(self):
         """
-        Calculates the beam's Finite Elements Method stiffness matrix according to Timoshenko beam theory. `n` corresponds to the beam's number of nodes.
+        Calculates the beam's Finite Elements Method stiffness matrix according to Timoshenko bending and Vlasov thin-walled torsion beam theory. `n` corresponds to the beam's number of nodes.
 
         :returns: Beam's FEM stiffness matrix.
-        :rtype: (6*n, 6*n)-numpy.ndarray
+        :rtype: (7*n, 7*n)-numpy.ndarray
         """
 
-        stiffnessMatrix = np.zeros([self.numberNodes * 6, self.numberNodes * 6])
+        stiffnessMatrix = np.zeros([7 * self.numberNodes, 7 * self.numberNodes])
+
+        x0 = 0
+        y0 = 1
+        z0 = 2
+        r0 = 3
+        w0 = 4
+        tau0 = 5
+        psi0 = 6
+        x1 = 7
+        y1 = 8
+        z1 = 9
+        r1 = 10
+        w1 = 11
+        tau1 = 12
+        psi1 = 13
+
+        assemblyBasisToStableBasisCoefsMatrix = np.eye(14)
+        # in the assembly basis, the constrained warping roll 0 dof (which substitutes r0 in place) picks up +w0 and +w1
+        assemblyBasisToStableBasisCoefsMatrix[w0, r0] = 1
+        assemblyBasisToStableBasisCoefsMatrix[w1, r0] = 1
+        # in the assembly basis, the constrained warping roll 1 dof (which substitutes r1 in place) picks up -w0 and -w1
+        assemblyBasisToStableBasisCoefsMatrix[w0, r1] = -1
+        assemblyBasisToStableBasisCoefsMatrix[w1, r1] = -1
 
         for i in range(self.numberSegments):
+            segmentStiffnessMatrixStableBasis = np.zeros([14, 14])
+
             segmentLength = self.segmentLengths[i]
             shearCorrectionVertical = self.verticalShearCorrections[i]
             shearCorrectionHorizontal = self.horizontalShearCorrections[i]
 
-            x1 = 6*i
-            y1 = 6*i + 1
-            z1 = 6*i + 2
-            phi1 = 6*i + 3
-            tau1 = 6*i + 4
-            psi1 = 6*i + 5
-            x2 = 6*i + 6
-            y2 = 6*i + 7
-            z2 = 6*i + 8
-            phi2 = 6*i + 9
-            tau2 = 6*i + 10
-            psi2 = 6*i + 11
-
             # axial stiffness
             EAOverL = self.youngsModulus * self.crossSectionAreas[i] / segmentLength
 
-            stiffnessMatrix[x1, x1] += EAOverL
-            stiffnessMatrix[x1, x2] += -EAOverL
-            stiffnessMatrix[x2, x1] += -EAOverL
-            stiffnessMatrix[x2, x2] += EAOverL
+            segmentStiffnessMatrixStableBasis[x0, x0] = EAOverL
+            segmentStiffnessMatrixStableBasis[x0, x1] = -EAOverL
+            segmentStiffnessMatrixStableBasis[x1, x0] = -EAOverL
+            segmentStiffnessMatrixStableBasis[x1, x1] = EAOverL
 
             # vertical bending
             EIOverCorrection = self.youngsModulus * self.verticalAreaMoments[i] / (1 + shearCorrectionVertical)
 
-            stiffnessMatrix[z1, z1] += 12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[z1, z2] += -12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[z2, z1] += -12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[z2, z2] += 12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[z0, z0] = 12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[z0, z1] = -12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[z1, z0] = -12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[z1, z1] = 12 * EIOverCorrection / segmentLength**3
 
-            stiffnessMatrix[z1  , tau1] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau1, z1  ] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z1  , tau2] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau2, z1  ] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau1, z2  ] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z2  , tau1] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[z2  , tau2] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[tau2, z2  ] += 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[z0  , tau0] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[tau0, z0  ] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[z0  , tau1] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[tau1, z0  ] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[tau0, z1  ] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[z1  , tau0] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[z1  , tau1] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[tau1, z1  ] = 6 * EIOverCorrection / segmentLength**2
 
-            stiffnessMatrix[tau1, tau1] += (4 + shearCorrectionVertical) * EIOverCorrection / segmentLength
-            stiffnessMatrix[tau1, tau2] += (2 - shearCorrectionVertical) * EIOverCorrection / segmentLength
-            stiffnessMatrix[tau2, tau1] += (2 - shearCorrectionVertical) * EIOverCorrection / segmentLength
-            stiffnessMatrix[tau2, tau2] += (4 + shearCorrectionVertical) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[tau0, tau0] = (4 + shearCorrectionVertical) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[tau0, tau1] = (2 - shearCorrectionVertical) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[tau1, tau0] = (2 - shearCorrectionVertical) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[tau1, tau1] = (4 + shearCorrectionVertical) * EIOverCorrection / segmentLength
 
             # horizontal bending
             EIOverCorrection = self.youngsModulus * self.horizontalAreaMoments[i] / (1 + shearCorrectionHorizontal)
 
-            stiffnessMatrix[y1, y1] += 12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[y1, y2] += -12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[y2, y1] += -12 * EIOverCorrection / segmentLength**3
-            stiffnessMatrix[y2, y2] += 12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[y0, y0] = 12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[y0, y1] = -12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[y1, y0] = -12 * EIOverCorrection / segmentLength**3
+            segmentStiffnessMatrixStableBasis[y1, y1] = 12 * EIOverCorrection / segmentLength**3
 
-            stiffnessMatrix[y1  , psi1] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[psi1, y1  ] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[y1  , psi2] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[psi2, y1  ] += 6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[psi1, y2  ] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[y2  , psi1] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[y2  , psi2] += -6 * EIOverCorrection / segmentLength**2
-            stiffnessMatrix[psi2, y2  ] += -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[y0  , psi0] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[psi0, y0  ] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[y0  , psi1] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[psi1, y0  ] = 6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[psi0, y1  ] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[y1  , psi0] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[y1  , psi1] = -6 * EIOverCorrection / segmentLength**2
+            segmentStiffnessMatrixStableBasis[psi1, y1  ] = -6 * EIOverCorrection / segmentLength**2
 
-            stiffnessMatrix[psi1, psi1] += (4 + shearCorrectionHorizontal) * EIOverCorrection / segmentLength
-            stiffnessMatrix[psi1, psi2] += (2 - shearCorrectionHorizontal) * EIOverCorrection / segmentLength
-            stiffnessMatrix[psi2, psi1] += (2 - shearCorrectionHorizontal) * EIOverCorrection / segmentLength
-            stiffnessMatrix[psi2, psi2] += (4 + shearCorrectionHorizontal) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[psi0, psi0] = (4 + shearCorrectionHorizontal) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[psi0, psi1] = (2 - shearCorrectionHorizontal) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[psi1, psi0] = (2 - shearCorrectionHorizontal) * EIOverCorrection / segmentLength
+            segmentStiffnessMatrixStableBasis[psi1, psi1] = (4 + shearCorrectionHorizontal) * EIOverCorrection / segmentLength
 
-            stiffnessMatrix[phi1, phi1] += EAOverL
-            stiffnessMatrix[phi1, phi2] += -EAOverL
-            stiffnessMatrix[phi2, phi1] += -EAOverL
-            stiffnessMatrix[phi2, phi2] += EAOverL
+            # torsional stiffness
+            GTorsionOverL = self.shearModulus * self.torsionConstants[i] / segmentLength
+
+            segmentStiffnessMatrixStableBasis[r0, r0] = GTorsionOverL
+            segmentStiffnessMatrixStableBasis[r0, r1] = -GTorsionOverL
+            segmentStiffnessMatrixStableBasis[r1, r0] = -GTorsionOverL
+            segmentStiffnessMatrixStableBasis[r1, r1] = GTorsionOverL
+
+            EWarpingOverL3 = self.youngsModulus * self.warpingConstants[i] / segmentLength**3
+            a = self.warpingWavenumbersSegmentLengths[i]
+
+            if a <= 0:
+                sys.exit('The product of the warping number and the segment length must not be zero on any segment.')
+            elif a > 320:
+                segmentStiffnessMatrixStableBasis[w0, w0] = EWarpingOverL3 * (-a**2 + a) / (-a + 2)
+                segmentStiffnessMatrixStableBasis[w0, w1] = EWarpingOverL3 * (-a) / (-a + 2)
+            elif a < 0.08:
+                segmentStiffnessMatrixStableBasis[w0, w0] = EWarpingOverL3 * (4 + 2/15 * a**2 - 11/6300  * a**4 + 1/27000   * a**6)
+                segmentStiffnessMatrixStableBasis[w0, w1] = EWarpingOverL3 * (2 - 1/30 * a**2 + 13/12600 * a**4 - 11/378000 * a**6)
+            else:
+                expa = np.exp(a)
+                exp2a = np.exp(2 * a)
+                denominator = a - a * exp2a + 2 * exp2a - 4 * expa + 2
+                segmentStiffnessMatrixStableBasis[w0, w0] = EWarpingOverL3 * (-a**2 - a - a**2 * exp2a + a * exp2a) / denominator
+                segmentStiffnessMatrixStableBasis[w0, w1] = EWarpingOverL3 * (a - a * exp2a + 2 * a**2 * expa) / denominator
+
+            segmentStiffnessMatrixStableBasis[w1, w0] = segmentStiffnessMatrixStableBasis[w0, w1]
+            segmentStiffnessMatrixStableBasis[w1, w1] = segmentStiffnessMatrixStableBasis[w0, w0]
+
+            segmentStiffnessMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentStiffnessMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
+
+            stiffnessMatrix[7 * i : 7 * (i + 2), 7 * i : 7 * (i + 2)] += segmentStiffnessMatrixAssemblyBasis
 
         return stiffnessMatrix
 
@@ -342,42 +510,42 @@ class Beam:
                 sys.exit('The value for the x coordinate within the beam segment must be between 0 and the segment length.')
 
         if force == 'a':
-            x1 = segmentDisplacements[0]
-            x2 = segmentDisplacements[6]
+            x0 = segmentDisplacements[0]
+            x1 = segmentDisplacements[7]
 
             if not type(xSegment) == np.ndarray:
-                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x2 - x1)
+                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x1 - x0)
             else:
-                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x2 - x1) * np.ones_like(xSegment)
+                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x1 - x0) * np.ones_like(xSegment)
 
         elif force == 'mv':
-            z1 = segmentDisplacements[2]
-            tau1 = segmentDisplacements[4]
-            z2 = segmentDisplacements[8]
-            tau2 = segmentDisplacements[10]
+            z0 = segmentDisplacements[2]
+            tau0 = segmentDisplacements[5]
+            z1 = segmentDisplacements[9]
+            tau1 = segmentDisplacements[12]
 
             svi = self.verticalShearCorrections[segmentIndex]
 
-            polynomialZ1 = -12 * xSegment/segmentLength + 6
-            polynomialTau1 = 6 * xSegment               - (4 + svi) * segmentLength
-            polynomialZ2 =  12 * xSegment/segmentLength - 6
-            polynomialTau2 = 6 * xSegment               + (-2 + svi) * segmentLength
+            polynomialZ0 = -12 * xSegment/segmentLength + 6
+            polynomialTau0 = 6 * xSegment               - (4 + svi) * segmentLength
+            polynomialZ1 =  12 * xSegment/segmentLength - 6
+            polynomialTau1 = 6 * xSegment               + (-2 + svi) * segmentLength
 
             prefactor = self.youngsModulus * self.verticalAreaMoments[segmentIndex] / ((1 + svi) * segmentLength**2)
 
-            return prefactor * (polynomialZ1 * z1 + polynomialTau1 * tau1 + polynomialZ2 * z2 + polynomialTau2 * tau2)
+            return prefactor * (polynomialZ0 * z0 + polynomialTau0 * tau0 + polynomialZ1 * z1 + polynomialTau1 * tau1)
 
         elif force == 'sv':
-            z1 = segmentDisplacements[2]
-            tau1 = segmentDisplacements[4]
-            z2 = segmentDisplacements[8]
-            tau2 = segmentDisplacements[10]
+            z0 = segmentDisplacements[2]
+            tau0 = segmentDisplacements[5]
+            z1 = segmentDisplacements[9]
+            tau1 = segmentDisplacements[12]
 
             svi = self.verticalShearCorrections[segmentIndex]
 
             prefactor = self.youngsModulus * self.verticalAreaMoments[segmentIndex] / ((1 + svi) * segmentLength**3)
 
-            shearForceValue = prefactor * (-12 * z1 + 6*segmentLength * tau1 + 12 * z2 + 6*segmentLength * tau2)
+            shearForceValue = prefactor * (-12 * z0 + 6*segmentLength * tau0 + 12 * z1 + 6*segmentLength * tau1)
 
             if not type(xSegment) == np.ndarray:
                 return shearForceValue
@@ -385,33 +553,33 @@ class Beam:
                 return shearForceValue * np.ones_like(xSegment)
 
         elif force == 'mh':
-            y1 = segmentDisplacements[1]
-            psi1 = segmentDisplacements[5]
-            y2 = segmentDisplacements[7]
-            psi2 = segmentDisplacements[11]
+            y0 = segmentDisplacements[1]
+            psi0 = segmentDisplacements[6]
+            y1 = segmentDisplacements[8]
+            psi1 = segmentDisplacements[13]
 
             shi = self.horizontalShearCorrections[segmentIndex]
 
-            polynomialY1 =  12 * xSegment/segmentLength - 6
-            polynomialPsi1 = 6 * xSegment               - (4 + shi) * segmentLength
-            polynomialY2 = -12 * xSegment/segmentLength + 6
-            polynomialPsi2 = 6 * xSegment               + (-2 + shi) * segmentLength
+            polynomialY0 =  12 * xSegment/segmentLength - 6
+            polynomialPsi0 = 6 * xSegment               - (4 + shi) * segmentLength
+            polynomialY1 = -12 * xSegment/segmentLength + 6
+            polynomialPsi1 = 6 * xSegment               + (-2 + shi) * segmentLength
 
             prefactor = self.youngsModulus * self.horizontalAreaMoments[segmentIndex] / ((1 + shi) * segmentLength**2)
 
-            return prefactor * (polynomialY1 * y1 + polynomialPsi1 * psi1 + polynomialY2 * y2 + polynomialPsi2 * psi2)
+            return prefactor * (polynomialY0 * y0 + polynomialPsi0 * psi0 + polynomialY1 * y1 + polynomialPsi1 * psi1)
 
         elif force == 'sh':
-            y1 = segmentDisplacements[1]
-            psi1 = segmentDisplacements[5]
-            y2 = segmentDisplacements[7]
-            psi2 = segmentDisplacements[11]
+            y0 = segmentDisplacements[1]
+            psi0 = segmentDisplacements[6]
+            y1 = segmentDisplacements[8]
+            psi1 = segmentDisplacements[13]
 
             shi = self.horizontalShearCorrections[segmentIndex]
 
             prefactor = self.youngsModulus * self.horizontalAreaMoments[segmentIndex] / ((1 + shi) * segmentLength**3)
 
-            shearForceValue = prefactor * (-12 * z1 - 6*segmentLength * tau1 + 12 * z2 - 6*segmentLength * tau2)
+            shearForceValue = prefactor * (-12 * z0 - 6*segmentLength * tau0 + 12 * z1 - 6*segmentLength * tau1)
 
             if not type(xSegment) == np.ndarray:
                 return shearForceValue
@@ -419,7 +587,63 @@ class Beam:
                 return shearForceValue * np.ones_like(xSegment)
 
         elif force == 't':
-            sys.exit('TODO: Unsupported.')
+            phi0 = segmentDisplacements[3]
+            w0 = segmentDisplacements[4]
+            phi1 = segmentDisplacements[10]
+            w1 = segmentDisplacements[11]
+
+            prefactor = self.shearModulus * self.torsionConstants[segmentIndex] / segmentLength
+
+            r0TorsionMoment = -prefactor
+            r1TorsionMoment =  prefactor
+            w0TorsionMoment = prefactor * self.boundedBasisCoefsForStableBasisW0[segmentIndex, 1]
+            w1TorsionMoment = w0TorsionMoment
+
+            phi0TorsionMoment = r0TorsionMoment + w0TorsionMoment + w1TorsionMoment
+            phi1TorsionMoment = r1TorsionMoment - w0TorsionMoment - w1TorsionMoment
+
+            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMoment + phi1 * phi1TorsionMoment + w1 * w1TorsionMoment
+
+            if not type(xSegment) == np.ndarray:
+                return torsionMomentValue
+            else:
+                return torsionMomentValue * np.ones_like(xSegment)
+
+        elif force == 'tf' or force == 'tw':
+            phi0 = segmentDisplacements[3]
+            w0 = segmentDisplacements[4]
+            phi1 = segmentDisplacements[10]
+            w1 = segmentDisplacements[11]
+
+            k = self.warpingWavenumbers[segmentIndex]
+            C12w0 = self.boundedBasisCoefsForStableBasisW0[segmentIndex, 1]
+            C13w0 = self.boundedBasisCoefsForStableBasisW0[segmentIndex, 2]
+            C14w0 = self.boundedBasisCoefsForStableBasisW0[segmentIndex, 3]
+            C12w1 = self.boundedBasisCoefsForStableBasisW1[segmentIndex, 1]
+            C13w1 = self.boundedBasisCoefsForStableBasisW1[segmentIndex, 2]
+            C14w1 = self.boundedBasisCoefsForStableBasisW1[segmentIndex, 3]
+
+            prefactor = self.shearModulus * self.torsionConstants[segmentIndex]
+            positiveExponentialBoundedBasis = np.exp( k * (xSegment - segmentLength))
+            negativeExponentialBoundedBasis = np.exp(-k * xSegment)
+
+            if force == 'tf':
+                r0TorsionMoment = -prefactor / segmentLength
+                r1TorsionMoment =  prefactor / segmentLength
+                w0TorsionMoment = prefactor * (C12w0 / segmentLength + C13w0 * k * positiveExponentialBoundedBasis - C14w0 * k * negativeExponentialBoundedBasis)
+                w1TorsionMoment = prefactor * (C12w1 / segmentLength + C13w1 * k * positiveExponentialBoundedBasis - C14w1 * k * negativeExponentialBoundedBasis)
+            else:
+                r0TorsionMoment = 0
+                r1TorsionMoment = 0
+                w0TorsionMoment = -prefactor * k * (C13w0 * positiveExponentialBoundedBasis - C14w0* negativeExponentialBoundedBasis)
+                w1TorsionMoment = -prefactor * k * (C13w1 * positiveExponentialBoundedBasis - C14w1* negativeExponentialBoundedBasis)
+
+            phi0TorsionMoment = r0TorsionMoment + w0TorsionMoment + w1TorsionMoment
+            phi1TorsionMoment = r1TorsionMoment - w0TorsionMoment - w1TorsionMoment
+
+            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMoment + phi1 * phi1TorsionMoment + w1 * w1TorsionMoment
+
+            return torsionMomentValue
 
         else:
             sys.exit('TODO: force must be one of [etc].')
@@ -447,10 +671,10 @@ class Beam:
             indicated by `x`, in Nm.
         :rtype: float or (m,)-numpy.ndarray
         """
-        if not force in ['a', 'mv', 'sv', 'mh', 'sh', 't']:
+        if not force in ['a', 'mv', 'sv', 'mh', 'sh', 't', 'tf', 'tw']:
             sys.exit('TODO: force must be one of [etc].')
 
-        if not self.numberNodes * 6 == displacements.size:
+        if not self.numberNodes * 7 == displacements.size:
             sys.exit('Wrong size of displacements vector')
 
         nodeXPositionsStartingAtZero = self.nodeXPositions - self.nodeXPositions[0]
@@ -463,7 +687,7 @@ class Beam:
             aftVertexIndex = np.searchsorted(nodeXPositionsStartingAtZero, x, side = 'right')-1
             coordinateSegment = x - nodeXPositionsStartingAtZero[aftVertexIndex]
 
-            segmentDisplacements = displacements[6*aftVertexIndex : 6*(aftVertexIndex + 2)]
+            segmentDisplacements = displacements[7*aftVertexIndex : 7*(aftVertexIndex + 2)]
 
             return self.SegmentInternalForce(coordinateSegment, segmentDisplacements, aftVertexIndex, force)
 
@@ -485,7 +709,7 @@ class Beam:
             coordinatesSegment = x[mask] - nodeXPositionsStartingAtZero[i]
 
             if not coordinatesSegment.size == 0:
-                segmentDisplacements = displacements[6*i : 6*(i + 2)]
+                segmentDisplacements = displacements[7*i : 7*(i + 2)]
 
                 internalForceDistribution[mask] = self.SegmentInternalForce(coordinatesSegment, segmentDisplacements, i, force)
 
@@ -535,11 +759,13 @@ class Beam:
         for i in range(-1, self.numberSegments + 1):
             self.facesOnSegment[i] = np.where(self.segmentOfFace == i)[0]
 
+        self.yFaces = np.zeros([hullMesh.nb_faces])
+        self.zFaces = np.zeros([hullMesh.nb_faces])
+        self.yFaces = hullMesh.faces_centers[:, 1]
+        self.zFaces = hullMesh.faces_centers[:, 2]
 
         self.xSegmentFaces = np.zeros([hullMesh.nb_faces])
         self.chiSegmentFaces = np.zeros([hullMesh.nb_faces])
-        self.yOffsetFaces = np.zeros([hullMesh.nb_faces])
-        self.zOffsetFaces = np.zeros([hullMesh.nb_faces])
 
         # Segment -1: before the start of the beam
         xInitialSegment = self.nodeXPositions[0]
@@ -547,9 +773,6 @@ class Beam:
         for face in self.facesOnSegment[-1]:
             self.xSegmentFaces[face] = hullMesh.faces_centers[face,0] - xInitialSegment
             self.chiSegmentFaces[face] = -1
-
-            self.yOffsetFaces[face] = hullMesh.faces_centers[face,1]
-            self.zOffsetFaces[face] = hullMesh.faces_centers[face,2] - self.zNeutralAxis
 
         # Segments 0 to self.numberSegments - 1: within the beam
         for segment in range(0, self.numberSegments):
@@ -559,18 +782,12 @@ class Beam:
                 self.xSegmentFaces[face] = hullMesh.faces_centers[face,0] - xInitialSegment
                 self.chiSegmentFaces[face] = self.xSegmentFaces[face] / self.segmentLengths[segment]
 
-                self.yOffsetFaces[face] = hullMesh.faces_centers[face,1]
-                self.zOffsetFaces[face] = hullMesh.faces_centers[face,2] - self.zNeutralAxis
-
         # Segment self.numberSegments: after the end of the beam
         xInitialSegment = self.nodeXPositions[self.numberSegments]
 
         for face in self.facesOnSegment[self.numberSegments]:
             self.xSegmentFaces[face] = hullMesh.faces_centers[face,0] - xInitialSegment
             self.chiSegmentFaces[face] = 2
-
-            self.yOffsetFaces[face] = hullMesh.faces_centers[face,1]
-            self.zOffsetFaces[face] = hullMesh.faces_centers[face,2] - self.zNeutralAxis
 
         dofs = {}
 
@@ -579,17 +796,19 @@ class Beam:
             swayDofName  = 'y%d'%vertex # bending horizontal
             heaveDofName = 'z%d'%vertex # bending vertical
 
-            rollDofName  = 'roll%d'%vertex  # torsion
-            pitchDofName = 'pitch%d'%vertex # bending horizontal
-            yawDofName   = 'yaw%d'%vertex   # bending vertical
+            rollDofName  = 'roll%d'%vertex      # torsion
+            warpingDofName = 'warping%d'%vertex # torsion
+            pitchDofName = 'pitch%d'%vertex     # bending horizontal
+            yawDofName   = 'yaw%d'%vertex       # bending vertical
 
             surgeDofDisplacements = np.zeros([hullMesh.nb_faces, 3])
             swayDofDisplacements  = np.zeros([hullMesh.nb_faces, 3])
             heaveDofDisplacements = np.zeros([hullMesh.nb_faces, 3])
 
-            rollDofDisplacements  = np.zeros([hullMesh.nb_faces, 3])
-            pitchDofDisplacements = np.zeros([hullMesh.nb_faces, 3])
-            yawDofDisplacements   = np.zeros([hullMesh.nb_faces, 3])
+            rollDofDisplacements    = np.zeros([hullMesh.nb_faces, 3])
+            warpingDofDisplacements = np.zeros([hullMesh.nb_faces, 3])
+            pitchDofDisplacements   = np.zeros([hullMesh.nb_faces, 3])
+            yawDofDisplacements     = np.zeros([hullMesh.nb_faces, 3])
 
 
             # segment before the vertex
@@ -601,37 +820,51 @@ class Beam:
                     swayDofDisplacements[face,:]  = np.array([0, 1, 0])
                     heaveDofDisplacements[face,:] = np.array([0, 0, 1])
 
-                    rollDofDisplacements[face,:]  = np.array([0,                        -self.zOffsetFaces[face], self.yOffsetFaces[face]  ])
-                    pitchDofDisplacements[face,:] = np.array([self.zOffsetFaces[face],  0,                        -self.xSegmentFaces[face]])
-                    yawDofDisplacements[face,:]   = np.array([-self.yOffsetFaces[face], self.xSegmentFaces[face], 0                        ])
+                    rollDofDisplacements[face,:]  = np.array([0,                                     -(self.zFaces[face] - self.zTwistCenter), self.yFaces[face]        ])
+                    pitchDofDisplacements[face,:] = np.array([self.zFaces[face] - self.zNeutralAxis, 0,                                        -self.xSegmentFaces[face]])
+                    yawDofDisplacements[face,:]   = np.array([-self.yFaces[face],                    self.xSegmentFaces[face],                 0                        ])
             else:
                 segmentLength = self.segmentLengths[segment]
 
                 for face in self.facesOnSegment[segment]:
                     chiSegment = self.chiSegmentFaces[face]
-                    yOffset = self.yOffsetFaces[face]
-                    zOffset = self.zOffsetFaces[face]
+                    yFace = self.yFaces[face]
+                    zFaceFromNeutralAxis = self.zFaces[face] - self.zNeutralAxis
+                    zFaceFromTwistCenter = self.zFaces[face] - self.zTwistCenter
 
-                    deltaV = self.verticalShearCorrections[segment]
-                    deltaH = self.horizontalShearCorrections[segment]
+                    sv = self.verticalShearCorrections[segment]
+                    sh = self.horizontalShearCorrections[segment]
+                    a = self.warpingWavenumbersSegmentLengths[segment]
 
-                    verticalBendingDeflectionHeave = (deltaV * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + deltaV)
-                    verticalBendingRotationHeave = (-6 * chiSegment + 6 * chiSegment**2) / segmentLength / (1 + deltaV)
-                    verticalBendingDeflectionPitch = (deltaV/2 * chiSegment + (2 - deltaV)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaV)
-                    verticalBendingRotationPitch = ((-2 + deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
+                    verticalBendingDeflectionHeave = (sv * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + sv)
+                    verticalBendingRotationHeave = (-6 * chiSegment + 6 * chiSegment**2) / segmentLength / (1 + sv)
+                    verticalBendingDeflectionPitch = (sv/2 * chiSegment + (2 - sv)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + sv)
+                    verticalBendingRotationPitch = ((-2 + sv) * chiSegment + 3 * chiSegment**2) / (1 + sv)
 
-                    horizontalBendingDeflectionSway = (deltaH * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + deltaH)
-                    horizontalBendingRotationSway = -(-6 * chiSegment + 6 * chiSegment**2) / (1 + deltaH) / segmentLength
-                    horizontalBendingDeflectionYaw = -(deltaH/2 * chiSegment + (2 - deltaH)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaH)
-                    horizontalBendingRotationYaw = ((-2 + deltaH) * chiSegment + 3 * chiSegment**2) / (1 + deltaH)
+                    horizontalBendingDeflectionSway = (sh * chiSegment + 3 * chiSegment**2 - 2 * chiSegment**3) / (1 + sh)
+                    horizontalBendingRotationSway = -(-6 * chiSegment + 6 * chiSegment**2) / (1 + sh) / segmentLength
+                    horizontalBendingDeflectionYaw = -(sh/2 * chiSegment + (2 - sh)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + sh)
+                    horizontalBendingRotationYaw = ((-2 + sh) * chiSegment + 3 * chiSegment**2) / (1 + sh)
+
+                    if self.splineLimit[segment]:
+                        twistAngleWarpingAft = chiSegment * (chiSegment - 1)**2
+                        twistAngleWarping = chiSegment**2 * (chiSegment - 1)
+                    else:
+                        boundedBasis = np.array([1, chiSegment, np.exp(a * (chiSegment - 1)), np.exp(-a * chiSegment)])
+
+                        twistAngleWarpingAft = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW0[segment, :])
+                        twistAngleWarping = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW1[segment, :])
+
+                    twistAngleRoll = chiSegment - twistAngleWarpingAft - twistAngleWarping
 
                     surgeDofDisplacements[face,:] = np.array([chiSegment, 0, 0])
-                    swayDofDisplacements[face,:]  = np.array([-yOffset * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
-                    heaveDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
+                    swayDofDisplacements[face,:]  = np.array([-yFace * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
+                    heaveDofDisplacements[face,:] = np.array([ zFaceFromNeutralAxis * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
-                    rollDofDisplacements[face,:]  = np.array([0, -zOffset * chiSegment, yOffset * chiSegment])
-                    pitchDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
-                    yawDofDisplacements[face,:]   = np.array([-yOffset * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
+                    rollDofDisplacements[face,:]    = np.array([0, -zFaceFromTwistCenter * twistAngleRoll, yFace * twistAngleRoll])
+                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarping, yFace * twistAngleWarping])
+                    pitchDofDisplacements[face,:]   = np.array([ zFaceFromNeutralAxis * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
+                    yawDofDisplacements[face,:]     = np.array([-yFace * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
             # segment after the vertex
             segment = vertex
@@ -642,45 +875,60 @@ class Beam:
                     swayDofDisplacements[face,:]  = np.array([0, 1, 0])
                     heaveDofDisplacements[face,:] = np.array([0, 0, 1])
 
-                    rollDofDisplacements[face,:]  = np.array([0,                        -self.zOffsetFaces[face], self.yOffsetFaces[face]  ])
-                    pitchDofDisplacements[face,:] = np.array([self.zOffsetFaces[face],  0,                        -self.xSegmentFaces[face]])
-                    yawDofDisplacements[face,:]   = np.array([-self.yOffsetFaces[face], self.xSegmentFaces[face], 0                        ])
+                    rollDofDisplacements[face,:]  = np.array([0,                                     -(self.zFaces[face] - self.zTwistCenter), self.yFaces[face]        ])
+                    pitchDofDisplacements[face,:] = np.array([self.zFaces[face] - self.zNeutralAxis, 0,                                        -self.xSegmentFaces[face]])
+                    yawDofDisplacements[face,:]   = np.array([-self.yFaces[face],                    self.xSegmentFaces[face],                 0                        ])
             else:
                 segmentLength = self.segmentLengths[segment]
 
                 for face in self.facesOnSegment[segment]:
                     chiSegment = self.chiSegmentFaces[face]
-                    yOffset = self.yOffsetFaces[face]
-                    zOffset = self.zOffsetFaces[face]
+                    yFace = self.yFaces[face]
+                    zFaceFromNeutralAxis = self.zFaces[face] - self.zNeutralAxis
+                    zFaceFromTwistCenter = self.zFaces[face] - self.zTwistCenter
 
-                    deltaV = self.verticalShearCorrections[segment]
-                    deltaH = self.horizontalShearCorrections[segment]
+                    sv = self.verticalShearCorrections[segment]
+                    sh = self.horizontalShearCorrections[segment]
+                    a = self.warpingWavenumbersSegmentLengths[segment]
 
-                    verticalBendingDeflectionHeave = 1 + (-deltaV * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + deltaV)
-                    verticalBendingRotationHeave = (6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + deltaV)
-                    verticalBendingDeflectionPitch = ((-2 - deltaV)/2 * chiSegment + (4 + deltaV)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaV)
-                    verticalBendingRotationPitch = 1 + ((-4 - deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
+                    verticalBendingDeflectionHeave = 1 + (-sv * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + sv)
+                    verticalBendingRotationHeave = (6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + sv)
+                    verticalBendingDeflectionPitch = ((-2 - sv)/2 * chiSegment + (4 + sv)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + sv)
+                    verticalBendingRotationPitch = 1 + ((-4 - sv) * chiSegment + 3 * chiSegment**2) / (1 + sv)
 
-                    horizontalBendingDeflectionSway = 1 + (-deltaH * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + deltaH)
-                    horizontalBendingRotationSway = -(6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + deltaH)
-                    horizontalBendingDeflectionYaw = -((-2 - deltaH)/2 * chiSegment + (4 + deltaH)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + deltaH)
-                    horizontalBendingRotationYaw = 1 + ((-4 - deltaV) * chiSegment + 3 * chiSegment**2) / (1 + deltaV)
+                    horizontalBendingDeflectionSway = 1 + (-sh * chiSegment - 3 * chiSegment**2 + 2 * chiSegment**3) / (1 + sh)
+                    horizontalBendingRotationSway = -(6 * chiSegment - 6 * chiSegment**2) / segmentLength / (1 + sh)
+                    horizontalBendingDeflectionYaw = -((-2 - sh)/2 * chiSegment + (4 + sh)/2 * chiSegment**2 - chiSegment**3) * segmentLength / (1 + sh)
+                    horizontalBendingRotationYaw = 1 + ((-4 - sv) * chiSegment + 3 * chiSegment**2) / (1 + sv)
+
+                    if self.splineLimit[segment]:
+                        twistAngleWarping = chiSegment * (chiSegment - 1)**2
+                        twistAngleWarpingFore = chiSegment**2 * (chiSegment - 1)
+                    else:
+                        boundedBasis = np.array([1, chiSegment, np.exp(a * (chiSegment - 1)), np.exp(-a * chiSegment)])
+
+                        twistAngleWarping = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW0[segment, :])
+                        twistAngleWarpingFore = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW1[segment, :])
+
+                    twistAngleRoll = 1 - chiSegment + twistAngleWarping + twistAngleWarpingFore
 
                     surgeDofDisplacements[face,:] = np.array([1 - chiSegment, 0, 0])
-                    swayDofDisplacements[face,:]  = np.array([-yOffset * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
-                    heaveDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
+                    swayDofDisplacements[face,:]  = np.array([-yFace * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
+                    heaveDofDisplacements[face,:] = np.array([ zFaceFromNeutralAxis * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
-                    rollDofDisplacements[face,:]  = np.array([0, -zOffset * (1 - chiSegment), yOffset * (1 - chiSegment)])
-                    pitchDofDisplacements[face,:] = np.array([ zOffset * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
-                    yawDofDisplacements[face,:]   = np.array([-yOffset * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
+                    rollDofDisplacements[face,:]    = np.array([0, -zFaceFromTwistCenter * twistAngleRoll, yFace * twistAngleRoll])
+                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarping, yFace * twistAngleWarping])
+                    pitchDofDisplacements[face,:]   = np.array([ zFaceFromNeutralAxis * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
+                    yawDofDisplacements[face,:]     = np.array([-yFace * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
             dofs[surgeDofName] = surgeDofDisplacements
             dofs[swayDofName]  = swayDofDisplacements
             dofs[heaveDofName] = heaveDofDisplacements
 
-            dofs[rollDofName]  = rollDofDisplacements
-            dofs[pitchDofName] = pitchDofDisplacements
-            dofs[yawDofName]   = yawDofDisplacements
+            dofs[rollDofName]    = rollDofDisplacements
+            dofs[warpingDofName] = warpingDofDisplacements
+            dofs[pitchDofName]   = pitchDofDisplacements
+            dofs[yawDofName]     = yawDofDisplacements
 
         return dofs
 
@@ -695,7 +943,7 @@ class Beam:
 
         if not np.abs(allDryNaturalFrequenciesSquared[sortingIndices[5]]) < np.abs(allDryNaturalFrequenciesSquared[sortingIndices[6]]) * rigidBodyModesFrequencySquaredTolerance:
             sys.exit('Rigid body mode frequencies are not sufficiently smaller than flexible mode frequencies, according to the tolerance provided.')
-        
+
         allDryNaturalFrequenciesSquared[sortingIndices[0:6]] = np.zeros([6])
 
         initialIndex = np.min(sortingIndices[0:6])
@@ -856,7 +1104,7 @@ class ModalSpringingResults:
         stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
         self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
 
-        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (modalHydrodynamicResults.added_mass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * modalHydrodynamicResults.radiation_damping*2 + (self.stiffnessMatrix + modalHydrostaticStiffness)
+        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (modalHydrodynamicResults.added_mass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * modalHydrodynamicResults.radiation_damping + (self.stiffnessMatrix + modalHydrostaticStiffness)
 
         self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'radiating_dof', 'influenced_dof'])
 

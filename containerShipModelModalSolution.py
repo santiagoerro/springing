@@ -37,6 +37,8 @@ horizontalAreaMoments = np.ones([beamSegments]) * 0.24325e-04
 sectionalAreas = np.ones([beamSegments]) * 0.36945e-02
 verticalShearAreaFractions = np.ones([beamSegments]) * 0.32148
 horizontalShearAreaFractions = np.ones([beamSegments]) * 0.28385
+torsionConstants = np.ones([beamSegments]) * 1.5223e-06
+warpingConstants = np.ones([beamSegments]) * 4.0778e-08
 zCentroidOverBottom = 0.45434e-01
 
 # material properties
@@ -74,13 +76,15 @@ beamDefinition['verticalAreaMoments'] = verticalAreaMoments
 beamDefinition['horizontalAreaMoments'] = horizontalAreaMoments
 beamDefinition['verticalTimoshenkoCoefs'] = verticalShearAreaFractions
 beamDefinition['horizontalTimoshenkoCoefs'] = horizontalShearAreaFractions
-beamDefinition['torsionConstants'] = np.ones([beamSegments])
-beamDefinition['warpingConstants'] = np.ones([beamSegments])
+beamDefinition['torsionConstants'] = torsionConstants
+beamDefinition['warpingConstants'] = warpingConstants
 beamDefinition['youngsModulus'] = youngsModulus
 beamDefinition['shearModulus'] = shearModulus
 beamDefinition['zNeutralAxis'] = zNeutralAxis
 beamDefinition['zTwistCenter'] = zNeutralAxis
 beamDefinition['linearDensities'] = linearDensitiesBeam
+beamDefinition['zCentersOfMass'] = np.ones([beamSegments]) * zNeutralAxis
+beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.4)**2
 
 # beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
 beam = spr.Beam(beamDefinition)
@@ -91,9 +95,9 @@ segmentsPerHalfStation = beamSegments / 40
 for i in range(pointMasses.size):
     vertex = int(pointMassStations[i] * 2 * segmentsPerHalfStation)
 
-    beam.massMatrix[6 * vertex    , 6 * vertex    ] += pointMasses[i]
-    beam.massMatrix[6 * vertex + 1, 6 * vertex + 1] += pointMasses[i]
-    beam.massMatrix[6 * vertex + 2, 6 * vertex + 2] += pointMasses[i]
+    beam.massMatrix[7 * vertex    , 7 * vertex    ] += pointMasses[i]
+    beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
+    beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
 
 # mesh generation
 panelsLength = int(round(panelsPerMeter * hullLength))
@@ -125,11 +129,17 @@ testMatrix = xr.Dataset(coords={
 
 # hydrostatic stiffness calculation
 hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
-hydrostaticStiffness.to_netcdf("data/modal_hydrostatics.nc")
+# hydrostaticStiffness.to_netcdf("data/modal_hydrostatics_allmodes.nc")
 # hydrostaticStiffness = xr.open_dataarray("data/modal_hydrostatics_allmodes.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
+np.save('data/added_mass_allmodes.npy', hydrodynamicResults.added_mass.values)
+np.save('data/radiation_damping_allmodes.npy', hydrodynamicResults.radiation_damping.values)
+np.save('data/excitation_force_allmodes.npy', hydrodynamicResults.excitation_force.values)
+np.save('data/omega_allmodes.npy', hydrodynamicResults.omega.values)
+np.save('data/dryNaturalFrequenciesSquared_allmodes.npy', dryNaturalFrequenciesSquared)
+np.save('data/dryVibrationModesNormalized_allmodes.npy', dryVibrationModesNormalized)
 
 # coupling of hydrodynamic and structural results, springing results
 modalSpringingResults = spr.ModalSpringingResults(dryNaturalFrequenciesSquared, hydrostaticStiffness, hydrodynamicResults)
@@ -139,7 +149,6 @@ midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = np.zeros([6 * beam.numberNodes])
     displacements = waveHeight * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
@@ -181,7 +190,6 @@ print('Omega [rad/s]      Bending moment [Nm]')
 for i in range(omegas.size):
     print('%.2f               %.2f'%(omegas[i], midshipsBendingMomentAmplitudes[i]))
 print()
-print('Draft : %.3f'%hullDraft)
 
 # for i in range(6, 16):
 #     animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
@@ -247,7 +255,7 @@ plt.title('Vertical shear force distribution for omega = %.2f rad/s'%omegas[omeg
 plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part')
 plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part')
 plt.xlabel('x [m]')
-plt.ylabel('Vertical shear force [Nm]')
+plt.ylabel('Vertical shear force [N]')
 plt.legend()
 plt.savefig('solutions/%dmodes/shearForceDistribution.png'%numberModes)
 
