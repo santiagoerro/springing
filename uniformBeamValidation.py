@@ -3,6 +3,7 @@ import numpy.linalg as la
 import springing as spr
 import capytaine as cpt
 from scipy.optimize import fsolve
+from scipy.integrate import solve_bvp
 import matplotlib.pyplot as plt
 
 
@@ -31,13 +32,16 @@ warpingWavenumberBeamLength = 80
 linearDensity = 1
 rollInertia = 1
 
+# torsion-bending coupling
+axesOffset = 1
+
 # number of modes
 numberModes = 10
 
 
 
 # CALCULATIONS
-# beam definition
+# beam definition without bending-torsion coupling
 shearModulus = youngsModulus / (2 * (1 + 0.26))
 
 verticalTimoshenkoCoef = 3 * youngsModulus * verticalAreaMoment / (vertical3EIOverKappaLSquaredAG * sectionArea * shearModulus * beamLength**2)
@@ -53,8 +57,6 @@ verticalTimoshenkoCoefs = np.ones([beamSegments]) * verticalTimoshenkoCoef
 horizontalTimoshenkoCoefs = np.ones([beamSegments]) * horizontalTimoshenkoCoef
 torsionConstants = np.ones([beamSegments]) * torsionConstant
 warpingConstants = np.ones([beamSegments]) * warpingConstant
-zNeutralAxis = 0
-zTwistCenter = 0
 linearDensities = np.ones([beamSegments]) * linearDensity
 zCentersOfMass = np.zeros([beamSegments])
 rollInertias = np.ones([beamSegments]) * rollInertia
@@ -70,8 +72,8 @@ beamDefinition['torsionConstants'] = torsionConstants
 beamDefinition['warpingConstants'] = warpingConstants
 beamDefinition['youngsModulus'] = youngsModulus
 beamDefinition['shearModulus'] = shearModulus
-beamDefinition['zNeutralAxis'] = zNeutralAxis
-beamDefinition['zTwistCenter'] = zTwistCenter
+beamDefinition['zNeutralAxis'] = 0
+beamDefinition['zTwistCenter'] = 0
 beamDefinition['linearDensities'] = linearDensities
 beamDefinition['zCentersOfMass'] = zCentersOfMass
 beamDefinition['rollInertias'] = rollInertias
@@ -99,7 +101,7 @@ axialCounter = 0
 verticalBendingCounter = 0
 torsionCounter = 0
 
-for i in range(6, 7 * (beamSegments + 1) - 6):
+for i in range(6, 7 * (beamSegments + 1)):
     if np.abs(dryVibrationModesNormalized[0, i]) > 0.1 and axialCounter < 10:
         axialDryNaturalFrequencies[axialCounter] = dryNaturalFrequencies[i]
         axialCounter = axialCounter + 1
@@ -151,6 +153,83 @@ torsionMomentFree = beam.InternalForce(x, nodalDisplacementsTorsion, 'tf')
 torsionMomentWarping = beam.InternalForce(x, nodalDisplacementsTorsion, 'tw')
 
 
+# beam definition with torsion-bending coupling
+beamDefinitionCoupled = beamDefinition
+beamDefinitionCoupled['zTwistCenter'] = -axesOffset
+
+beamCoupled = spr.Beam(beamDefinitionCoupled)
+
+# FEM natural frequencies
+dryNaturalFrequenciesCoupledSquared, dryVibrationModesCoupledNormalized, modalDofsCoupled = beamCoupled.CalculateModalDOFs(mesh, 7 * (beamSegments + 1))
+dryNaturalFrequenciesCoupled = np.sqrt(dryNaturalFrequenciesCoupledSquared)
+
+# mode classification
+torsionBendingDryNaturalFrequencies = np.zeros([numberModes])
+torsionBendingDryVibrationModesNormalized = np.zeros([7 * (beamSegments + 1), numberModes])
+
+torsionBendingCounter = 0
+
+for i in range(6, 7 * (beamSegments + 1)):
+    if np.abs(dryVibrationModesCoupledNormalized[3, i]) > 0.1 and torsionBendingCounter < 10:
+        torsionBendingDryNaturalFrequencies[torsionBendingCounter] = dryNaturalFrequenciesCoupled[i]
+        torsionBendingDryVibrationModesNormalized[:, torsionBendingCounter] = dryVibrationModesCoupledNormalized[:, i]
+        torsionBendingCounter = torsionBendingCounter + 1
+
+# boundary value problem solution of continuous coupled Euler-Bernoulli bending and warping-free torsion
+def BendingTorsionODEFunction(x: np.ndarray, y: np.ndarray, p: np.ndarray):
+    h = y[0, :]
+    hPrime = y[1, :]
+    hDoublePrime = y[2, :]
+    hTriplePrime = y[3, :]
+    a = y[4, :]
+    aPrime = y[5, :]
+
+    omegaSquared = p[0]
+
+    yPrime = np.zeros(y.shape)
+    yPrime[0, :] = hPrime
+    yPrime[1, :] = hDoublePrime
+    yPrime[2, :] = hTriplePrime
+    yPrime[3, :] = omegaSquared * linearDensity / (youngsModulus * horizontalAreaMoment) * (h - axesOffset * a)
+    yPrime[4, :] = aPrime
+    yPrime[5, :] = omegaSquared / (shearModulus * torsionConstant) * (axesOffset * linearDensity * h - (axesOffset**2 * linearDensity + rollInertia) * a)
+
+    return yPrime
+
+
+def BendingTorsionBC(yInitial: np.ndarray, yFinal: np.ndarray, p: np.ndarray):
+    boundaryConditions = np.zeros([7])
+
+    boundaryConditions[0] = yInitial[2]
+    boundaryConditions[1] = yInitial[3]
+    boundaryConditions[2] = yInitial[5]
+    boundaryConditions[3] = yFinal[2]
+    boundaryConditions[4] = yFinal[3]
+    boundaryConditions[5] = yFinal[5]
+    boundaryConditions[6] = yInitial[4] + 1
+
+    return boundaryConditions
+
+
+torsionBendingDryNaturalFrequenciesBVP = np.zeros([numberModes])
+
+for i in range(numberModes):
+    yGuess = np.zeros([6, nodeXPositions.size])
+
+    yGuess[0, :] = torsionBendingDryVibrationModesNormalized[1::7, i]
+    yGuess[1, :] = np.gradient(yGuess[0, :], nodeXPositions)
+    yGuess[2, :] = np.gradient(yGuess[1, :], nodeXPositions)
+    yGuess[3, :] = np.gradient(yGuess[2, :], nodeXPositions)
+    yGuess[4, :] = torsionBendingDryVibrationModesNormalized[3::7, i]
+    yGuess[5, :] = np.gradient(yGuess[4, :], nodeXPositions)
+
+    pGuess = np.array([torsionBendingDryNaturalFrequencies[i]**2])
+
+    solution = solve_bvp(BendingTorsionODEFunction, BendingTorsionBC, nodeXPositions, yGuess, pGuess)
+
+    torsionBendingDryNaturalFrequenciesBVP[i] = np.sqrt(solution.p[0])
+
+
 
 # OUTPUT
 print()
@@ -164,10 +243,15 @@ print('Nodes     Numerical     Analytic Bernoulli beam')
 for i in range(numberModes):
     print('%2d        %6.2f        %6.2f'%(i + 2, verticalBendingDryNaturalFrequencies[i], verticalBendingDryNaturalFrequenciesBernoulliAnalytic[i]))
 print()
-print('Dry torsion natural frequencies (rad/s)')
+print('Dry decoupled torsion natural frequencies (rad/s)')
 print('Nodes     Numerical     Analytic no warping')
 for i in range(numberModes):
     print('%2d        %5.2f         %5.2f'%(i + 2, torsionDryNaturalFrequencies[i], torsionalDryNaturalFrequenciesNoWarpingAnalytic[i]))
+print()
+print('Dry coupled horizontal bending and torsion natural frequencies (rad/s)')
+print('Number    FEM           BVP Bernoulli no warping')
+for i in range(numberModes):
+    print('%2d        %5.2f         %5.2f'%(i + 1, torsionBendingDryNaturalFrequencies[i], torsionBendingDryNaturalFrequenciesBVP[i]))
 print()
 
 

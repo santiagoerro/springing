@@ -41,6 +41,7 @@ horizontalShearAreaFractions = np.ones([beamSegments]) * 0.28385
 torsionConstants = np.ones([beamSegments]) * 1.5223e-06
 warpingConstants = np.ones([beamSegments]) * 4.0778e-08
 zCentroidOverBottom = 0.45434e-01
+zShearCenterOverBottom = -0.26763e-01
 
 # material properties
 youngsModulus = 0.215e10
@@ -64,6 +65,7 @@ panelsDepth = 16
 
 hullDraft = hullDisplacement / (waterDensity * hullLength * hullBreadth)
 zNeutralAxis = -hullDraft + zCentroidOverBottom
+zTwistCenter = -hullDraft + zShearCenterOverBottom
 centerOfMass = (0, 0, zNeutralAxis)
 
 uniformlyDistributedMass = hullDisplacement - np.sum(pointMasses)
@@ -81,7 +83,7 @@ beamDefinition['warpingConstants'] = warpingConstants
 beamDefinition['youngsModulus'] = youngsModulus
 beamDefinition['shearModulus'] = shearModulus
 beamDefinition['zNeutralAxis'] = zNeutralAxis
-beamDefinition['zTwistCenter'] = zNeutralAxis
+beamDefinition['zTwistCenter'] = zTwistCenter
 beamDefinition['linearDensities'] = linearDensitiesBeam
 beamDefinition['zCentersOfMass'] = np.ones([beamSegments]) * zNeutralAxis
 beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.4)**2
@@ -137,12 +139,6 @@ hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
-np.save('data/added_mass_nodal.npy', hydrodynamicResults.added_mass.values)
-np.save('data/radiation_damping_nodal.npy', hydrodynamicResults.radiation_damping.values)
-np.save('data/excitation_force_nodal.npy', hydrodynamicResults.excitation_force.values)
-np.save('data/omega_nodal.npy', hydrodynamicResults.omega.values)
-np.save('data/dryNaturalFrequenciesSquared_nodal.npy', dryNaturalFrequenciesSquared)
-np.save('data/dryVibrationModesNormalized_nodal.npy', dryVibrationModes)
 
 # coupling of hydrodynamic and structural results, springing results
 springingResults = spr.NodalSpringingResults(beam.massMatrix, beam.stiffnessMatrix, hydrostaticStiffness, hydrodynamicResults)

@@ -325,9 +325,8 @@ class Beam:
                 segmentMassMatrixStableBasis[r0, w0] = fullTwistInertiaL * (2*a**2*exp2a + 2*a**2*expa + 2*a**2 - 9*a*exp2a + 9*a + 12*exp2a - 24*expa + 12)/(6*a**2*(a*exp2a - a - 2*exp2a + 4*expa - 2))
                 segmentMassMatrixStableBasis[r0, w1] = fullTwistInertiaL * (-a*exp2a - 4*a*expa - a + 3*exp2a - 3)/(6*a*(a*exp2a - a - 2*exp2a + 4*expa - 2))
 
-            segmentMassMatrixStableBasis[w1, w1] = segmentMassMatrixStableBasis[w0, w0]
-            segmentMassMatrixStableBasis[w1, w0] = segmentMassMatrixStableBasis[w0, w1]
-
+            segmentMassMatrixStableBasis[w1, w1] =  segmentMassMatrixStableBasis[w0, w0]
+            segmentMassMatrixStableBasis[w1, w0] =  segmentMassMatrixStableBasis[w0, w1]
             segmentMassMatrixStableBasis[r1, w0] = -segmentMassMatrixStableBasis[r0, w1]
             segmentMassMatrixStableBasis[r1, w1] = -segmentMassMatrixStableBasis[r0, w0]
 
@@ -335,7 +334,63 @@ class Beam:
             segmentMassMatrixStableBasis[w1, r0] = segmentMassMatrixStableBasis[r0, w1]
             segmentMassMatrixStableBasis[w0, r1] = segmentMassMatrixStableBasis[r1, w0]
             segmentMassMatrixStableBasis[w1, r1] = segmentMassMatrixStableBasis[r1, w1]
-            
+
+            # horizontal bending - torsion coupling
+            bendingTorsionFactor = segmentMass * (zCentersOfMass[i] - self.zTwistCenter) / (1 + shi)
+
+            segmentMassMatrixStableBasis[y0,   r0] = -bendingTorsionFactor/120 * (42 + 40 * shi)
+            segmentMassMatrixStableBasis[y0,   r1] = -bendingTorsionFactor/120 * (18 + 20 * shi)
+            segmentMassMatrixStableBasis[psi0, r0] = -bendingTorsionFactor/120 * ( 6 +  5 * shi) * segmentLength
+            segmentMassMatrixStableBasis[psi0, r1] = -bendingTorsionFactor/120 * ( 4 +  5 * shi) * segmentLength
+
+            segmentMassMatrixStableBasis[y1,   r0] =  segmentMassMatrixStableBasis[y0,   r1]
+            segmentMassMatrixStableBasis[y1,   r1] =  segmentMassMatrixStableBasis[y0,   r0]
+            segmentMassMatrixStableBasis[psi1, r0] = -segmentMassMatrixStableBasis[psi0, r1]
+            segmentMassMatrixStableBasis[psi1, r1] = -segmentMassMatrixStableBasis[psi0, r0]
+
+            segmentMassMatrixStableBasis[r0, y0  ] = segmentMassMatrixStableBasis[y0,   r0]
+            segmentMassMatrixStableBasis[r1, y0  ] = segmentMassMatrixStableBasis[y0,   r1]
+            segmentMassMatrixStableBasis[r0, psi0] = segmentMassMatrixStableBasis[psi0, r0]
+            segmentMassMatrixStableBasis[r1, psi0] = segmentMassMatrixStableBasis[psi0, r1]
+            segmentMassMatrixStableBasis[r0, y1  ] = segmentMassMatrixStableBasis[y1,   r0]
+            segmentMassMatrixStableBasis[r1, y1  ] = segmentMassMatrixStableBasis[y1,   r1]
+            segmentMassMatrixStableBasis[r0, psi1] = segmentMassMatrixStableBasis[psi1, r0]
+            segmentMassMatrixStableBasis[r1, psi1] = segmentMassMatrixStableBasis[psi1, r1]
+
+            if a > 330:
+                segmentMassMatrixStableBasis[y0,   w0] = bendingTorsionFactor *                 (-20*a**4*shi - 21*a**4 + 90*a**3*shi + 90*a**3 - 120*a**2*shi - 60*a**2 - 360*a + 720) / (60*a**4*(a - 2))
+                segmentMassMatrixStableBasis[psi0, w0] = bendingTorsionFactor * segmentLength * (-a**4*shi/24 - a**4/20 + a**3*shi/12 + a**3/12 + a**2*shi/2 + a**2 - 2*a*shi - 5*a + 2*shi + 8) / (a**4*(a - 2))
+                segmentMassMatrixStableBasis[y1,   w0] = bendingTorsionFactor *                 (-10*a**4*shi - 9*a**4 + 30*a**3*shi + 30*a**3 - 60*a**2 + 360*a - 720) / (60*a**4*(a - 2))
+                segmentMassMatrixStableBasis[psi1, w0] = bendingTorsionFactor * segmentLength * (a**4*shi/24 + a**4/30 - a**3*shi/12 - a**3/12 - a**2*shi/2 + 2*a*shi - a - 2*shi + 4) / (a**4*(a - 2))
+            elif a < 0.6:
+                segmentMassMatrixStableBasis[y0,   w0] = bendingTorsionFactor *                 (-11/210 - shi/20 + a**2*(19*shi/25200 + 13/16800) + a**4*(-13*shi/756000 + -4057/232848000) + a**6*(109*shi/258720000 + 25673/60540480000) + a**8*(-28703*shi/2724321600000 + -6299/595945350000))
+                segmentMassMatrixStableBasis[psi0, w0] = bendingTorsionFactor * segmentLength * (-1/105 - shi/120 + a**2*(shi/6720 + 1/6300) + a**4*(-13*shi/3628800 + -1291/349272000) + a**6*(43*shi/479001600 + 97/1064188125) + a**8*(-1483*shi/653837184000 + -130733/57210753600000))
+                segmentMassMatrixStableBasis[y1,   w0] = bendingTorsionFactor *                 (-13/420 - shi/30 + a**2*(shi/1575 + 31/50400) + a**4*(-shi/63000 + -3643/232848000) + a**6*(59*shi/145530000 + 24377/60540480000) + a**8*(-7043*shi/681080400000 + -65519/6356750400000))
+                segmentMassMatrixStableBasis[psi1, w0] = bendingTorsionFactor * segmentLength * (1/140 + shi/120 + a**2*(-shi/6720 + -1/7200) + a**4*(13*shi/3628800 + 2423/698544000) + a**6*(-43*shi/479001600 + -48161/544864320000) + a**8*(1483*shi/653837184000 + 16099/7151344200000))
+            else:
+                expa = np.exp(a)
+                exp2a = np.exp(2 * a)
+                denominator = a**4 * (a*exp2a - a - 2*exp2a + 4*expa - 2)
+
+                segmentMassMatrixStableBasis[y0,   w0] = bendingTorsionFactor *                 (-20*a**4*shi*exp2a - 20*a**4*shi*expa - 20*a**4*shi - 21*a**4*exp2a - 18*a**4*expa - 21*a**4 + 90*a**3*shi*exp2a - 90*a**3*shi + 90*a**3*exp2a - 90*a**3 - 120*a**2*shi*exp2a + 240*a**2*shi*expa - 120*a**2*shi - 60*a**2*exp2a + 120*a**2*expa - 60*a**2 - 360*a*exp2a + 360*a + 720*exp2a - 1440*expa + 720) / (60 * denominator)
+                segmentMassMatrixStableBasis[psi0, w0] = bendingTorsionFactor * segmentLength * (-a**4*shi*exp2a/24 - a**4*shi*expa/12 - a**4*shi/24 - a**4*exp2a/20 - a**4*expa/15 - a**4/20 + a**3*shi*exp2a/12 - a**3*shi/12 + a**3*exp2a/12 - a**3/12 + a**2*shi*exp2a/2 + a**2*shi*expa + a**2*shi/2 + a**2*exp2a + a**2 - 2*a*shi*exp2a + 2*a*shi - 5*a*exp2a + 5*a + 2*shi*exp2a - 4*shi*expa + 2*shi + 8*exp2a - 16*expa + 8) / denominator
+                segmentMassMatrixStableBasis[y1,   w0] = bendingTorsionFactor *                 (-10*a**4*shi*exp2a - 40*a**4*shi*expa - 10*a**4*shi - 9*a**4*exp2a - 42*a**4*expa - 9*a**4 + 30*a**3*shi*exp2a - 30*a**3*shi + 30*a**3*exp2a - 30*a**3 - 60*a**2*exp2a + 120*a**2*expa - 60*a**2 + 360*a*exp2a - 360*a - 720*exp2a + 1440*expa - 720) / (60 * denominator)
+                segmentMassMatrixStableBasis[psi1, w0] = bendingTorsionFactor * segmentLength * (a**4*shi*exp2a/24 + a**4*shi*expa/12 + a**4*shi/24 + a**4*exp2a/30 + a**4*expa/10 + a**4/30 - a**3*shi*exp2a/12 + a**3*shi/12 - a**3*exp2a/12 + a**3/12 - a**2*shi*exp2a/2 - a**2*shi*expa - a**2*shi/2 - 2*a**2*expa + 2*a*shi*exp2a - 2*a*shi - a*exp2a + a - 2*shi*exp2a + 4*shi*expa - 2*shi + 4*exp2a - 8*expa + 4) / denominator
+
+            segmentMassMatrixStableBasis[y0,   w1] = -segmentMassMatrixStableBasis[y1,   w0]
+            segmentMassMatrixStableBasis[psi0, w1] =  segmentMassMatrixStableBasis[psi1, w0]
+            segmentMassMatrixStableBasis[y1,   w1] = -segmentMassMatrixStableBasis[y0,   w0]
+            segmentMassMatrixStableBasis[psi1, w1] =  segmentMassMatrixStableBasis[psi0, w0]
+
+            segmentMassMatrixStableBasis[w0, y0  ] = segmentMassMatrixStableBasis[y0,   w0]
+            segmentMassMatrixStableBasis[w1, y0  ] = segmentMassMatrixStableBasis[y0,   w1]
+            segmentMassMatrixStableBasis[w0, psi0] = segmentMassMatrixStableBasis[psi0, w0]
+            segmentMassMatrixStableBasis[w1, psi0] = segmentMassMatrixStableBasis[psi0, w1]
+            segmentMassMatrixStableBasis[w0, y1  ] = segmentMassMatrixStableBasis[y1,   w0]
+            segmentMassMatrixStableBasis[w1, y1  ] = segmentMassMatrixStableBasis[y1,   w1]
+            segmentMassMatrixStableBasis[w0, psi1] = segmentMassMatrixStableBasis[psi1, w0]
+            segmentMassMatrixStableBasis[w1, psi1] = segmentMassMatrixStableBasis[psi1, w1]
+
             segmentMassMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentMassMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
 
             massMatrix[7 * i : 7 * (i + 2), 7 * i : 7 * (i + 2)] += segmentMassMatrixAssemblyBasis
@@ -972,10 +1027,10 @@ class Beam:
             for nodalDof in nodalDofs.keys():
                 modeDisplacements = modeDisplacements + nodalDofs[nodalDof] * requestedDryVibrationModesNormalized[nodalDofIndex, i]
                 nodalDofIndex = nodalDofIndex + 1
-            
+
             modeName = 'mode%d'%i
             modalDofs[modeName] = modeDisplacements
-        
+
         return requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized, modalDofs
 
 

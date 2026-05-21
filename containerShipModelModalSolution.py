@@ -40,6 +40,7 @@ horizontalShearAreaFractions = np.ones([beamSegments]) * 0.28385
 torsionConstants = np.ones([beamSegments]) * 1.5223e-06
 warpingConstants = np.ones([beamSegments]) * 4.0778e-08
 zCentroidOverBottom = 0.45434e-01
+zShearCenterOverBottom = -0.26763e-01
 
 # material properties
 youngsModulus = 0.215e10
@@ -64,6 +65,7 @@ numberModes = 40
 
 hullDraft = hullDisplacement / (waterDensity * hullLength * hullBreadth)
 zNeutralAxis = -hullDraft + zCentroidOverBottom
+zTwistCenter = -hullDraft + zShearCenterOverBottom
 centerOfMass = (0, 0, zNeutralAxis)
 
 uniformlyDistributedMass = hullDisplacement - np.sum(pointMasses)
@@ -81,10 +83,10 @@ beamDefinition['warpingConstants'] = warpingConstants
 beamDefinition['youngsModulus'] = youngsModulus
 beamDefinition['shearModulus'] = shearModulus
 beamDefinition['zNeutralAxis'] = zNeutralAxis
-beamDefinition['zTwistCenter'] = zNeutralAxis
+beamDefinition['zTwistCenter'] = zTwistCenter
 beamDefinition['linearDensities'] = linearDensitiesBeam
 beamDefinition['zCentersOfMass'] = np.ones([beamSegments]) * zNeutralAxis
-beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.4)**2
+beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.35)**2
 
 # beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
 beam = spr.Beam(beamDefinition)
@@ -134,12 +136,6 @@ hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
-np.save('data/added_mass_allmodes.npy', hydrodynamicResults.added_mass.values)
-np.save('data/radiation_damping_allmodes.npy', hydrodynamicResults.radiation_damping.values)
-np.save('data/excitation_force_allmodes.npy', hydrodynamicResults.excitation_force.values)
-np.save('data/omega_allmodes.npy', hydrodynamicResults.omega.values)
-np.save('data/dryNaturalFrequenciesSquared_allmodes.npy', dryNaturalFrequenciesSquared)
-np.save('data/dryVibrationModesNormalized_allmodes.npy', dryVibrationModesNormalized)
 
 # coupling of hydrodynamic and structural results, springing results
 modalSpringingResults = spr.ModalSpringingResults(dryNaturalFrequenciesSquared, hydrostaticStiffness, hydrodynamicResults)
@@ -191,9 +187,9 @@ for i in range(omegas.size):
     print('%.2f               %.2f'%(omegas[i], midshipsBendingMomentAmplitudes[i]))
 print()
 
-# for i in range(6, 16):
-#     animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
-#     animation.run()
+for i in range(6, 16):
+    animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
+    animation.run()
 
 
 # paper results
