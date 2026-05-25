@@ -264,6 +264,28 @@ class Beam:
             segmentMassMatrixStableBasis[tau1, tau0] = verticalFactor * (-7 * svi2 - 14 * svi - 6) * segmentLength**2
             segmentMassMatrixStableBasis[tau1, tau1] = verticalFactor * ( 7 * svi2 + 14 * svi + 8) * segmentLength**2
 
+            # axial - vertical bending coupling
+            axialBendingFactor = linearDensities[i] * (zCentersOfMass[i] - self.zNeutralAxis) / (12 * (svi + 1))
+
+            segmentMassMatrixStableBasis[x0, z0  ] = axialBendingFactor * ( 6)
+            segmentMassMatrixStableBasis[x0, tau0] = axialBendingFactor * (4 * svi + 1) * segmentLength
+            segmentMassMatrixStableBasis[x0, z1  ] = axialBendingFactor * (-6)
+            segmentMassMatrixStableBasis[x0, tau1] = axialBendingFactor * (2 * svi - 1) * segmentLength
+
+            segmentMassMatrixStableBasis[x1, z0  ] = segmentMassMatrixStableBasis[x0, z0  ]
+            segmentMassMatrixStableBasis[x1, tau0] = segmentMassMatrixStableBasis[x0, tau1]
+            segmentMassMatrixStableBasis[x1, z1  ] = segmentMassMatrixStableBasis[x0, z1  ]
+            segmentMassMatrixStableBasis[x1, tau1] = segmentMassMatrixStableBasis[x0, tau0]
+
+            segmentMassMatrixStableBasis[z0,   x0] = segmentMassMatrixStableBasis[x0, z0  ]
+            segmentMassMatrixStableBasis[tau0, x0] = segmentMassMatrixStableBasis[x0, tau0]
+            segmentMassMatrixStableBasis[z1,   x0] = segmentMassMatrixStableBasis[x0, z1  ]
+            segmentMassMatrixStableBasis[tau1, x0] = segmentMassMatrixStableBasis[x0, tau1]
+            segmentMassMatrixStableBasis[z0,   x1] = segmentMassMatrixStableBasis[x1, z0  ]
+            segmentMassMatrixStableBasis[tau0, x1] = segmentMassMatrixStableBasis[x1, tau0]
+            segmentMassMatrixStableBasis[z1,   x1] = segmentMassMatrixStableBasis[x1, z1  ]
+            segmentMassMatrixStableBasis[tau1, x1] = segmentMassMatrixStableBasis[x1, tau1]
+
             # horizontal bending motion
             horizontalFactor = segmentMass / (840 * (shi2 + 2 * shi + 1))
 
