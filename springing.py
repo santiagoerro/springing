@@ -1010,7 +1010,7 @@ class Beam:
         return dofs
 
 
-    def CalculateModalDOFs(self, hullMesh: cpt.Mesh, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+    def CalculateModes(self, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
         if numberModes < 6:
             sys.exit('numberModes must be greater than or equal to 6: at least the rigid body modes must be considered.')
 
@@ -1037,6 +1037,12 @@ class Beam:
 
         requestedDryNaturalFrequenciesSquared = allDryNaturalFrequenciesSquared[initialIndex : initialIndex + numberModes]
         requestedDryVibrationModesNormalized = allDryVibrationModesNormalized[:, initialIndex : initialIndex + numberModes]
+
+        return requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized
+
+
+    def CalculateModalDOFs(self, hullMesh: cpt.Mesh, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+        requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized = self.CalculateModes(numberModes, rigidBodyModesFrequencySquaredTolerance)
 
         nodalDofs = self.CalculateNodalDOFs(hullMesh)
 

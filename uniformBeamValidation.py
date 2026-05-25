@@ -1,7 +1,6 @@
 import numpy as np
 import numpy.linalg as la
 import springing as spr
-import capytaine as cpt
 from scipy.optimize import fsolve
 from scipy.integrate import solve_bvp
 import matplotlib.pyplot as plt
@@ -80,16 +79,9 @@ beamDefinition['rollInertias'] = rollInertias
 
 beam = spr.Beam(beamDefinition)
 
-# mesh
-meshSize = (beamLength, beamLength * 0.1, beamLength * 0.1)
-meshCenter = (beamLength/2, 0, 0)
-meshResolution = (100, 10, 10)
-
-mesh = cpt.mesh_parallelepiped(size = meshSize, center = meshCenter, name = 'hull', resolution = meshResolution).immersed_part()
-
 
 # numerical natural frequencies
-dryNaturalFrequenciesSquared, dryVibrationModesNormalized, modalDofs = beam.CalculateModalDOFs(mesh, 7 * (beamSegments + 1), rigidBodyModesFrequencySquaredTolerance = 1e-2)
+dryNaturalFrequenciesSquared, dryVibrationModesNormalized = beam.CalculateModes(7 * (beamSegments + 1), rigidBodyModesFrequencySquaredTolerance = 1e-2)
 dryNaturalFrequencies = np.sqrt(dryNaturalFrequenciesSquared)
 
 # mode classification
@@ -160,7 +152,7 @@ beamDefinitionCoupled['zTwistCenter'] = -axesOffset
 beamCoupled = spr.Beam(beamDefinitionCoupled)
 
 # FEM natural frequencies
-dryNaturalFrequenciesCoupledSquared, dryVibrationModesCoupledNormalized, modalDofsCoupled = beamCoupled.CalculateModalDOFs(mesh, 7 * (beamSegments + 1))
+dryNaturalFrequenciesCoupledSquared, dryVibrationModesCoupledNormalized = beamCoupled.CalculateModes(7 * (beamSegments + 1))
 dryNaturalFrequenciesCoupled = np.sqrt(dryNaturalFrequenciesCoupledSquared)
 
 # mode classification
