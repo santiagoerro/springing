@@ -12,30 +12,27 @@ shearModulus = 1
 torsionConstant = 1
 rollInertiaDensity = 1
 
-beamLength = 1
-
-bendingNodes = 2
-torsionNodes = 6
-initialNodes = 100
-
-
 verticalAreaMoment = 1
 sectionArea = 1
 vertical3EIOverKappaLSquaredAG = 0.00002
 horizontal3EIOverKappaLSquaredAG = 0.00002
 
-warpingWavenumberBeamLength = 80
+warpingWavenumberBeamLength = 1
 
-numberSegments = 40
+nodeXPositions = np.array([0, 0.9, 1])
+
+
+
+beamLength = nodeXPositions[-1] - nodeXPositions[0]
+numberSegments = nodeXPositions.size - 1
 
 verticalTimoshenkoCoef = 3 * youngsModulus * verticalAreaMoment / (vertical3EIOverKappaLSquaredAG * sectionArea * shearModulus * beamLength**2)
 horizontalTimoshenkoCoef = 3 * youngsModulus * horizontalAreaMoment / (horizontal3EIOverKappaLSquaredAG * sectionArea * shearModulus * beamLength**2)
 
 warpingConstant = shearModulus * torsionConstant / (youngsModulus * warpingWavenumberBeamLength**2) * beamLength**2
 
-
 beamDefinition = {}
-beamDefinition['nodeXPositions'] = np.linspace(0, beamLength, numberSegments + 1)
+beamDefinition['nodeXPositions'] = nodeXPositions
 beamDefinition['crossSectionAreas'] = np.ones([numberSegments]) * sectionArea
 beamDefinition['verticalAreaMoments'] = np.ones([numberSegments]) * verticalAreaMoment
 beamDefinition['horizontalAreaMoments'] = np.ones([numberSegments]) * horizontalAreaMoment
@@ -51,42 +48,41 @@ beamDefinition['linearDensities'] = np.ones([numberSegments]) * linearDensity
 beamDefinition['zCentersOfMass'] = np.zeros([numberSegments])
 beamDefinition['rollInertias'] = np.ones([numberSegments]) * rollInertiaDensity
 
-
 beam = spr.Beam(beamDefinition)
 
 
 x = np.linspace(-beamLength * 0.1, beamLength * 1.1, 5000)
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 0] = 1
+displacements[7 + 0] = 1
 axialDisplacementFunction = beam.DisplacementFunction(x, displacements, 'a')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 1] = 1
+displacements[7 + 1] = 1
 horizontalDeflectionDisplacementFunctionSwayMotion = beam.DisplacementFunction(x, displacements, 'h')
 yawDisplacementFunctionSwayMotion = beam.DisplacementFunction(x, displacements, 'q')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 6] = 1
+displacements[7 + 6] = 1
 horizontalDeflectionDisplacementFunctionYawMotion = beam.DisplacementFunction(x, displacements, 'h')
 yawDisplacementFunctionYawMotion = beam.DisplacementFunction(x, displacements, 'q')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 2] = 1
+displacements[7 + 2] = 1
 verticalDeflectionDisplacementFunctionHeaveMotion = beam.DisplacementFunction(x, displacements, 'v')
 pitchDisplacementFunctionHeaveMotion = beam.DisplacementFunction(x, displacements, 'p')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 5] = 1
+displacements[7 + 5] = 1
 verticalDeflectionDisplacementFunctionPitchMotion = beam.DisplacementFunction(x, displacements, 'v')
 pitchDisplacementFunctionPitchMotion = beam.DisplacementFunction(x, displacements, 'p')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 3] = 1
+displacements[7 + 3] = 1
 twistDisplacementFunctionPhiMotion = beam.DisplacementFunction(x, displacements, 't')
 
 displacements = np.zeros([7 * (numberSegments + 1)])
-displacements[7 * 3 + 4] = 1
+displacements[7 + 4] = 1
 twistDisplacementFunctionWarpingMotion = beam.DisplacementFunction(x, displacements, 't')
 
 
