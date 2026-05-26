@@ -548,6 +548,200 @@ class Beam:
         return stiffnessMatrix
 
 
+    def SegmentDisplacementFunction(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, function: str):
+        if function == 'a':
+            x0 = segmentDisplacements[0]
+            x1 = segmentDisplacements[7]
+
+            if segmentIndex == -1:
+                return x1 + 0 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return x0 + 0 * xSegment
+
+            chi = xSegment / self.segmentLengths[segmentIndex]
+
+            return x0 * (1 - chi) + x1 * chi
+
+        elif function == 'v':
+            z0 = segmentDisplacements[2]
+            tau0 = segmentDisplacements[5]
+            z1 = segmentDisplacements[9]
+            tau1 = segmentDisplacements[12]
+
+            if segmentIndex == -1:
+                return z1 - tau1 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return z0 - tau0 * xSegment
+
+            segmentLength = self.segmentLengths[segmentIndex]
+            chi = xSegment / segmentLength
+            sv = self.verticalShearCorrections[segmentIndex]
+
+            deflectionZ0   = 1 / (1 + sv) * (1 + sv - sv * chi - 3 * chi**2 + 2 * chi**3)
+            deflectionZ1   = 1 / (1 + sv) * (         sv * chi + 3 * chi**2 - 2 * chi**3)
+            deflectionTau0 = segmentLength / (2 * (1 + sv)) * (-(2 + sv) * chi + (4 + sv) * chi**2 - 2 * chi**3)
+            deflectionTau1 = segmentLength / (2 * (1 + sv)) * (       sv * chi + (2 - sv) * chi**2 - 2 * chi**3)
+
+            return deflectionZ0 * z0 + deflectionTau0 * tau0 + deflectionZ1 * z1 + deflectionTau1 * tau1
+
+        elif function == 'p':
+            z0 = segmentDisplacements[2]
+            tau0 = segmentDisplacements[5]
+            z1 = segmentDisplacements[9]
+            tau1 = segmentDisplacements[12]
+
+            if segmentIndex == -1:
+                return tau1 + 0 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return tau0 + 0 * xSegment
+
+            segmentLength = self.segmentLengths[segmentIndex]
+            chi = xSegment / segmentLength
+            sv = self.verticalShearCorrections[segmentIndex]
+
+            rotationZ0   = 6 / ((1 + sv) * segmentLength) * ( chi - chi**2)
+            rotationZ1   = 6 / ((1 + sv) * segmentLength) * (-chi + chi**2)
+            rotationTau0 = 1 / (1 + sv) * (1 + sv - (4 + sv) * chi + 3 * chi**2)
+            rotationTau1 = 1 / (1 + sv) * (        (-2 + sv) * chi + 3 * chi**2)
+
+            return rotationZ0 * z0 + rotationTau0 * tau0 + rotationZ1 * z1 + rotationTau1 * tau1
+
+        elif function == 'h':
+            y0 = segmentDisplacements[1]
+            psi0 = segmentDisplacements[6]
+            y1 = segmentDisplacements[8]
+            psi1 = segmentDisplacements[13]
+
+            if segmentIndex == -1:
+                return y1 + psi1 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return y0 + psi0 * xSegment
+
+            segmentLength = self.segmentLengths[segmentIndex]
+            chi = xSegment / segmentLength
+            sh = self.horizontalShearCorrections[segmentIndex]
+
+            deflectionY0   = 1 / (1 + sh) * (1 + sh - sh * chi - 3 * chi**2 + 2 * chi**3)
+            deflectionY1   = 1 / (1 + sh) * (         sh * chi + 3 * chi**2 - 2 * chi**3)
+            deflectionPsi0 = segmentLength / (2 * (1 + sh)) * ((2 + sh) * chi - (4 + sh) * chi**2 + 2 * chi**3)
+            deflectionPsi1 = segmentLength / (2 * (1 + sh)) * (     -sh * chi - (2 - sh) * chi**2 + 2 * chi**3)
+
+            return deflectionY0 * y0 + deflectionPsi0 * psi0 + deflectionY1 * y1 + deflectionPsi1 * psi1
+
+        elif function == 'q':
+            y0 = segmentDisplacements[1]
+            psi0 = segmentDisplacements[6]
+            y1 = segmentDisplacements[8]
+            psi1 = segmentDisplacements[13]
+
+            if segmentIndex == -1:
+                return psi1 + 0 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return psi0 + 0 * xSegment
+
+            segmentLength = self.segmentLengths[segmentIndex]
+            chi = xSegment / segmentLength
+            sh = self.horizontalShearCorrections[segmentIndex]
+
+            rotationY0   = 6 / ((1 + sh) * segmentLength) * (-chi + chi**2)
+            rotationY1   = 6 / ((1 + sh) * segmentLength) * ( chi - chi**2)
+            rotationPsi0 = 1 / (1 + sh) * (1 + sh - (4 + sh) * chi + 3 * chi**2)
+            rotationPsi1 = 1 / (1 + sh) * (        (-2 + sh) * chi + 3 * chi**2)
+
+            return rotationY0 * y0 + rotationPsi0 * psi0 + rotationY1 * y1 + rotationPsi1 * psi1
+
+        elif function == 't':
+            phi0 = segmentDisplacements[3]
+            w0 = segmentDisplacements[4]
+            phi1 = segmentDisplacements[10]
+            w1 = segmentDisplacements[11]
+
+            if segmentIndex == -1:
+                return phi1 + 0 * xSegment
+
+            if segmentIndex == self.numberSegments:
+                return phi0 + 0 * xSegment
+
+            segmentLength = self.segmentLengths[segmentIndex]
+            chi = xSegment / segmentLength
+            a = self.warpingWavenumbersSegmentLengths[segmentIndex]
+
+            twistR0 = 1 - chi
+            twistR1 = chi
+
+            if self.splineLimit[segmentIndex]:
+                twistW0 = chi * (chi - 1)**2
+                twistW1 = chi**2 * (chi - 1)
+            else:
+                boundedBasis = np.array([1 + chi*0, chi, np.exp(a * (chi - 1)), np.exp(-a * chi)])
+
+                twistW0 = self.boundedBasisCoefsForStableBasisW0[segmentIndex, :] @ boundedBasis
+                twistW1 = self.boundedBasisCoefsForStableBasisW1[segmentIndex, :] @ boundedBasis
+
+            twistPhi0 = twistR0 + twistW0 + twistW1
+            twistPhi1 = twistR1 - twistW0 - twistW1
+
+            return twistPhi0 * phi0 + twistW0 * w0 + twistPhi1 * phi1 + twistW1 * w1
+
+        else:
+            sys.exit('TODO: function must be one of [etc].')
+
+
+    def DisplacementFunction(self, x: float | np.ndarray, displacements: np.ndarray, function: str):
+        if not function in ['a', 'v', 'p', 'h', 'q', 't']:
+            sys.exit('TODO: function must be one of [etc].')
+
+        if not self.numberNodes * 7 == displacements.size:
+            sys.exit('Wrong size of displacements vector')
+
+        if not type(x) == np.ndarray:
+            aftVertexIndex = np.searchsorted(self.nodeXPositions, x, side = 'right') - 1
+            coordinateSegment = x - self.nodeXPositions[max(0, aftVertexIndex)]
+
+            if aftVertexIndex == -1:
+                segmentDisplacements = np.zeros([14])
+                segmentDisplacements[7:] = displacements[:7]
+            elif aftVertexIndex == self.numberSegments:
+                segmentDisplacements = np.zeros([14])
+                segmentDisplacements[:7] = displacements[7*self.numberSegments:]
+            else:
+                segmentDisplacements = displacements[7*aftVertexIndex : 7*(aftVertexIndex + 2)]
+
+            return self.SegmentDisplacementFunction(coordinateSegment, segmentDisplacements, aftVertexIndex, function)
+
+
+        displacementFunction = np.zeros([x.size], dtype = displacements.dtype)
+
+        for i in range(-1, self.numberSegments + 1):
+            if i == -1:
+                mask = x < self.nodeXPositions[0]
+            elif i == self.numberSegments:
+                mask = x >= self.nodeXPositions[i]
+            else:
+                mask = (x >= self.nodeXPositions[i]) & (x < self.nodeXPositions[i + 1])
+
+            coordinatesSegment = x[mask] - self.nodeXPositions[max(0, i)]
+
+            if not coordinatesSegment.size == 0:
+                if i == -1:
+                    segmentDisplacements = np.zeros([14])
+                    segmentDisplacements[7:] = displacements[:7]
+                elif i == self.numberSegments:
+                    segmentDisplacements = np.zeros([14])
+                    segmentDisplacements[:7] = displacements[7*self.numberSegments:]
+                else:
+                    segmentDisplacements = displacements[7*i : 7*(i + 2)]
+
+                displacementFunction[mask] = self.SegmentDisplacementFunction(coordinatesSegment, segmentDisplacements, i, function)
+
+        return displacementFunction
+
+
     def SegmentInternalForce(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, force: str):
         """
         TODO: Update.
@@ -590,10 +784,7 @@ class Beam:
             x0 = segmentDisplacements[0]
             x1 = segmentDisplacements[7]
 
-            if not type(xSegment) == np.ndarray:
-                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x1 - x0)
-            else:
-                return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x1 - x0) * np.ones_like(xSegment)
+            return self.youngsModulus * self.crossSectionAreas[segmentIndex] / segmentLength * (x1 - x0) + 0 * xSegment
 
         elif force == 'mv':
             z0 = segmentDisplacements[2]
@@ -624,10 +815,7 @@ class Beam:
 
             shearForceValue = prefactor * (-12 * z0 + 6*segmentLength * tau0 + 12 * z1 + 6*segmentLength * tau1)
 
-            if not type(xSegment) == np.ndarray:
-                return shearForceValue
-            else:
-                return shearForceValue * np.ones_like(xSegment)
+            return shearForceValue + 0 * xSegment
 
         elif force == 'mh':
             y0 = segmentDisplacements[1]
@@ -658,10 +846,7 @@ class Beam:
 
             shearForceValue = prefactor * (-12 * z0 - 6*segmentLength * tau0 + 12 * z1 - 6*segmentLength * tau1)
 
-            if not type(xSegment) == np.ndarray:
-                return shearForceValue
-            else:
-                return shearForceValue * np.ones_like(xSegment)
+            return shearForceValue + 0 * xSegment
 
         elif force == 't':
             phi0 = segmentDisplacements[3]
@@ -681,10 +866,7 @@ class Beam:
 
             torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMoment + phi1 * phi1TorsionMoment + w1 * w1TorsionMoment
 
-            if not type(xSegment) == np.ndarray:
-                return torsionMomentValue
-            else:
-                return torsionMomentValue * np.ones_like(xSegment)
+            return torsionMomentValue + 0 * xSegment
 
         elif force == 'tf' or force == 'tw':
             phi0 = segmentDisplacements[3]

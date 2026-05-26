@@ -120,7 +120,7 @@ verticalBendingDryNaturalFrequenciesBernoulliAnalytic = betaSolutions**2 / beamL
 torsionalDryNaturalFrequenciesNoWarpingAnalytic = np.arange(1, numberModes + 1) * np.pi / beamLength * np.sqrt(shearModulus * torsionConstants[0] / rollInertias[0])
 
 
-# internal force distributions
+# internal force distributions and displacement functions
 # clamped at initial end
 clampedStiffnessMatrix = np.zeros([7 * beamSegments, 7 * beamSegments])
 clampedStiffnessMatrix = beam.stiffnessMatrix[7:, 7:]
@@ -137,12 +137,15 @@ clampedNodalDisplacementsTorsion = la.solve(clampedStiffnessMatrix, clampedForci
 nodalDisplacementsTorsion = np.zeros([7 * (beamSegments + 1)])
 nodalDisplacementsTorsion[7:] = clampedNodalDisplacementsTorsion
 # force distributions
-x = np.linspace(0, beamLength, 500)
+x = np.linspace(0, beamLength, 5000)
 verticalBendingMoment = beam.InternalForce(x, nodalDisplacementsBending, 'mv')
 verticalShearForce = beam.InternalForce(x, nodalDisplacementsBending, 'sv')
 torsionMoment = beam.InternalForce(x, nodalDisplacementsTorsion, 't')
 torsionMomentFree = beam.InternalForce(x, nodalDisplacementsTorsion, 'tf')
 torsionMomentWarping = beam.InternalForce(x, nodalDisplacementsTorsion, 'tw')
+# displacement functions
+verticalDeflection = beam.DisplacementFunction(x, nodalDisplacementsBending, 'v')
+twist = beam.DisplacementFunction(x, nodalDisplacementsTorsion, 't')
 
 
 # beam definition with torsion-bending coupling
@@ -248,6 +251,13 @@ print()
 
 
 plt.figure()
+plt.title('Vertical deflection distribution clamped start, 1N point force end.')
+plt.axhline(color = 'k', linewidth = 1)
+plt.plot(x, verticalDeflection, 'b')
+plt.xlabel('x [m]')
+plt.ylabel('Vertical deflection [m]')
+
+plt.figure()
 plt.title('Vertical bending moment distribution clamped start, 1N point force end.')
 plt.axhline(color = 'k', linewidth = 1)
 plt.plot(x, verticalBendingMoment, 'b')
@@ -260,6 +270,13 @@ plt.axhline(color = 'k', linewidth = 1)
 plt.plot(x, verticalShearForce, 'b')
 plt.xlabel('x [m]')
 plt.ylabel('Vertical shear force [N]')
+
+plt.figure()
+plt.title('Twist angle distribution clamped start, 1Nm point moment end.')
+plt.axhline(color = 'k', linewidth = 1)
+plt.plot(x, twist, 'b')
+plt.xlabel('x [m]')
+plt.ylabel('Twist angle [rad]')
 
 plt.figure()
 plt.title('Torsion moment distribution clamped start, 1Nm point moment end.')
