@@ -50,7 +50,7 @@ shearModulus = youngsModulus / (2 * (1 + 0.22))
 waveHeight = 0.05
 
 waterDepths = np.array([1.8])
-omegas = np.array([4.50, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 8.22])
+omegas = np.array([1, 2, 3, 4, 4.50, 5, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 7.4, 7.8, 8.22])
 waveDirections = np.array([np.pi])
 
 # mesh resolution
@@ -143,22 +143,27 @@ modalSpringingResults = spr.ModalSpringingResults(dryNaturalFrequenciesSquared, 
 # midships bending moments
 midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
+heaveAmplitudes = np.zeros([omegas.size])
+pitchAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = waveHeight * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
+
+    heaveAmplitudes[i] = np.abs(np.mean(displacements[2::7]))
+    pitchAmplitudes[i] = np.abs(np.mean(displacements[5::7]))
 
 bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight/2)
 
 # wavelengths
-wavenumbers = omegas**2 / gravity
-wavelengths = 2 * np.pi / wavenumbers
+wavelengths = hydrodynamicResults.wavelength.values
 
 # bending moment and shear force distributions
-omegaIndex = 3
+omegaPlots = 6.07
+omegaIndex = np.argmin(np.abs(omegas - omegaPlots))
 x = np.linspace(0, hullLength, 500)
-displacements = waveHeight * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, :]
+displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
 shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
 
@@ -187,9 +192,9 @@ for i in range(omegas.size):
     print('%.2f               %.2f'%(omegas[i], midshipsBendingMomentAmplitudes[i]))
 print()
 
-for i in range(6, 16):
-    animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
-    animation.run()
+# for i in range(6, 16):
+#     animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
+#     animation.run()
 
 
 # paper results
@@ -236,6 +241,22 @@ plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
 plt.savefig('solutions/%dmodes/midshipsBendingMomentCoefs.png'%numberModes)
+
+plt.figure()
+plt.title('Heave RAO')
+plt.plot(hullLength/wavelengths, heaveAmplitudes / (waveHeight / 2), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlim([0,1.75])
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Heave RAO [m/m]')
+plt.legend()
+
+plt.figure()
+plt.title('Pitch RAO')
+plt.plot(hullLength/wavelengths, pitchAmplitudes / (waveHeight / wavelengths * np.pi), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlim([0,1.75])
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Pitch RAO [rad/rad]')
+plt.legend()
 
 plt.figure()
 plt.title('Vertical bending moment distribution for omega = %.2f rad/s'%omegas[omegaIndex])
