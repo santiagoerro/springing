@@ -1378,3 +1378,105 @@ class ModalSpringingResults:
 
         self.hydrostaticStiffness = modalHydrostaticStiffness
         self.hydrodynamicResults = modalHydrodynamicResults
+
+
+
+class ModalProperSpringingResults:
+    """
+    Class used to compute and store the results of the ship's modal springing analysis.
+    """
+    def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
+        """
+        Instantiates a SpringingResults variable, calculating and storing the results of the springing
+        analysis defined by the parameters passed to it. Throughout, n corresponds to the beam's number
+        of nodes.
+
+        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
+            matrix for the hull girder beam.
+        :type massMatrix: (6*n,6*n)-numpy.ndarray
+
+        :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
+            Method stiffness matrix for the hull girder beam.
+        :type stiffnessMatrix: (6*n,6*n)-numpy.ndarray
+
+        :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
+            defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
+            the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
+            freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
+            of the `MeshBeamProperties` class.
+        :type hydrostaticStiffness: xarray.DataArray
+
+        :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
+            FloatingBody defined by the ship on a test matrix with different wave frequencies,
+            directions and water depths, as returned by the `fill_dataset` method of the
+            `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
+            given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
+            method.
+        :type hydrodynamicResults: xarray.Dataset
+
+        :returns: Class object containing the following attributes.
+
+            * displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
+                of the springing motions of the beam nodes divided by wave height, in m/m and
+                rad/m. The motions are sinusoidal, with the real part of the amplitude being the
+                displacement at t = 0 and the imaginary part being the displacement, with
+                opposite sign, after one fourth of the period. The array's dimensions are labeled
+                `'omega'`, `'wave_direction'`, `'water_depth'` and `'dof'`. The length and
+                coordinates associated to each of the first three dimensions match those of the
+                `added_mass` and `radiation_damping` attributes of `hydrodynamicResults`, and
+                are determined by the test matrix passed to the Capytaine BEM Solver when calculating
+                these results. The `'dof'` dimension has a length of 6n and indexes the degree of
+                freedom each amplitude corresponds to.
+            * massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            * stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
+                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+        :rtype: SpringingResults
+        """
+        numberOmegas = modalHydrodynamicResults.omega.size
+        numberRadiatingDofs = modalHydrodynamicResults.added_mass.sizes['radiating_dof']
+        numberInfluencedDofs = dryNaturalFrequenciesSquared.size
+
+        massMatrix = np.eye(numberInfluencedDofs)
+        self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
+        stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
+        self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
+
+        addedMassMatrix = np.zeros([numberOmegas, numberInfluencedDofs, numberInfluencedDofs])
+        addedMassMatrix[:, :numberRadiatingDofs, :] = modalHydrodynamicResults.added_mass.values
+        addedMassMatrix[:, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.added_mass.values[:, :, numberRadiatingDofs:], [0, 2, 1])
+        self.addedMass = xr.DataArray(addedMassMatrix, dims = ['omega', 'radiating_dof', 'influenced_dof'])
+
+        radiationDampingMatrix = np.zeros([numberOmegas, numberInfluencedDofs, numberInfluencedDofs])
+        radiationDampingMatrix[:, :numberRadiatingDofs, :] = modalHydrodynamicResults.radiation_damping.values
+        radiationDampingMatrix[:, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.radiation_damping.values[:, :, numberRadiatingDofs:], [0, 2, 1])
+        self.radiationDamping = xr.DataArray(radiationDampingMatrix, dims = ['omega', 'radiating_dof', 'influenced_dof'])
+
+        self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (self.addedMass + self.massMatrix) * modalHydrodynamicResults.omega**2 + complex(0,1) * modalHydrodynamicResults.omega * self.radiationDamping + (self.stiffnessMatrix + modalHydrostaticStiffness)
+
+        self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'radiating_dof', 'influenced_dof'])
+
+        self.modalAmplitudes: xr.DataArray = xr.dot(modalHydrodynamicResults.excitation_force, self.modalAmplitudesFromForcesMatrices, dims = ['influenced_dof'])
+        self.modalAmplitudes = self.modalAmplitudes.rename({'radiating_dof': 'dof'})
+
+        self.hydrostaticStiffness = modalHydrostaticStiffness
+        self.hydrodynamicResults = modalHydrodynamicResults
+
+
+
+def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float, gravity: float):
+    numberDofs = len(hullBody.dofs)
+    dofNames = list(hullBody.dofs.keys())
+
+    hydrostaticStiffness = np.zeros([numberDofs, numberDofs])
+
+    for i in range(numberDofs):
+        for j in range(numberDofs):
+            dofiVerticalComponent = hullBody.dofs[dofNames[i]][:, 2]
+            dofj = hullBody.dofs[dofNames[j]]
+
+            hydrostaticStiffness[i, j] = np.sum(hullBody.dof_normals(dofj) * dofiVerticalComponent * hullBody.mesh.faces_areas)
+
+    hydrostaticStiffnessDataArray = xr.DataArray(-waterDensity * gravity * hydrostaticStiffness, dims = ['influenced_dof', 'radiating_dof'])
+
+    return hydrostaticStiffnessDataArray
