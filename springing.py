@@ -1209,6 +1209,31 @@ class Beam:
         if not initialIndex == 0:
             print('Warning: Imaginary dry natural frequencies were encountered. There could be inconsistencies in the definition of the mass or stiffness matrices.')
 
+        mixedRigidBodyModesNormalized = allDryVibrationModesNormalized[:, initialIndex : initialIndex + 6]
+        separatedRigidBodyModesNormalized = np.zeros_like(mixedRigidBodyModesNormalized)
+
+        surgeSwayHeaveRollPitchYaw = [0, 1, 2, 3, 5, 6]
+
+        for i in range(6):
+            newModeConditionsMatrix = np.zeros([6, 6])
+
+            for j in range(i):
+                newModeConditionsMatrix[j, :] = separatedRigidBodyModesNormalized[:, j] @ self.massMatrix @ mixedRigidBodyModesNormalized
+            for j in range(i, 6):
+                newModeConditionsMatrix[j, :] = mixedRigidBodyModesNormalized[surgeSwayHeaveRollPitchYaw[j], :]
+
+            newModeConditionsVector = np.zeros([6])
+            newModeConditionsVector[i] = 1
+
+            newModeCoefsNotNormalized = la.solve(newModeConditionsMatrix, newModeConditionsVector)
+            newModeNotNormalized = mixedRigidBodyModesNormalized @ newModeCoefsNotNormalized
+
+            newModeModalMass = newModeNotNormalized @ self.massMatrix @ newModeNotNormalized
+
+            separatedRigidBodyModesNormalized[:, i] = newModeNotNormalized / np.sqrt(newModeModalMass)
+
+        allDryVibrationModesNormalized[:, initialIndex : initialIndex + 6] = separatedRigidBodyModesNormalized
+
         numberNodalDOFs = self.stiffnessMatrix.shape[0]
 
         if initialIndex + numberModes > numberNodalDOFs:

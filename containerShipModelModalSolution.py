@@ -101,6 +101,11 @@ for i in range(pointMasses.size):
     beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
     beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
 
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 3] += pointMasses[i] * (zNeutralAxis - zTwistCenter)**2
+
+    beam.massMatrix[7 * vertex + 1, 7 * vertex + 3] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 1] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+
 # mesh generation
 panelsLength = int(round(panelsPerMeter * hullLength))
 panelsBreadth = int(round(panelsPerMeter * hullBreadth))
@@ -130,9 +135,7 @@ testMatrix = xr.Dataset(coords={
 })
 
 # hydrostatic stiffness calculation
-hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
-# hydrostaticStiffness.to_netcdf("data/modal_hydrostatics_allmodes.nc")
-# hydrostaticStiffness = xr.open_dataarray("data/modal_hydrostatics_allmodes.nc")
+hydrostaticStiffness = spr.ComputeHydrostaticStiffness(hullBody, waterDensity, gravity)
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)

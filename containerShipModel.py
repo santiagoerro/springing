@@ -101,6 +101,11 @@ for i in range(pointMasses.size):
     beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
     beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
 
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 3] += pointMasses[i] * (zNeutralAxis - zTwistCenter)**2
+
+    beam.massMatrix[7 * vertex + 1, 7 * vertex + 3] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 1] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+
 # dry natural frequencies
 dryNaturalFrequenciesSquared, dryVibrationModes = eigh(beam.stiffnessMatrix, beam.massMatrix)
 
@@ -133,9 +138,7 @@ testMatrix = xr.Dataset(coords={
 })
 
 # hydrostatic stiffness calculation
-# hydrostaticStiffness = hullBody.compute_hydrostatic_stiffness(rho = waterDensity)
-# hydrostaticStiffness.to_netcdf("data/hydrostatics.nc")
-hydrostaticStiffness = xr.open_dataarray("data/hydrostatics.nc")
+hydrostaticStiffness = spr.ComputeHydrostaticStiffness(hullBody, waterDensity, gravity)
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)

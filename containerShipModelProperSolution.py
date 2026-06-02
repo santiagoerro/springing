@@ -50,7 +50,7 @@ shearModulus = youngsModulus / (2 * (1 + 0.22))
 waveHeight = 0.05
 
 waterDepths = np.array([1.8])
-omegas = np.array([1, 2, 3, 4, 4.50, 5, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 7.4, 7.8, 8.22])
+omegas = np.array([1, 2, 3, 4, 4.50, 5, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 7.4, 7.8, 8.22, 8.4, 8.6, 8.8, 9, 9.2, 9.4, 9.6, 9.8, 10, 10.2, 10.4, 10.6])
 waveDirections = np.array([np.pi])
 
 # mesh resolution
@@ -101,6 +101,11 @@ for i in range(pointMasses.size):
     beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
     beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
 
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 3] += pointMasses[i] * (zNeutralAxis - zTwistCenter)**2
+
+    beam.massMatrix[7 * vertex + 1, 7 * vertex + 3] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+    beam.massMatrix[7 * vertex + 3, 7 * vertex + 1] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
+
 # mesh generation
 panelsLength = int(round(panelsPerMeter * hullLength))
 panelsBreadth = int(round(panelsPerMeter * hullBreadth))
@@ -141,16 +146,13 @@ modalSpringingResults = spr.ModalProperSpringingResults(dryNaturalFrequenciesSqu
 # midships bending moments
 midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
-heaveAmplitudes = np.zeros([omegas.size])
-pitchAmplitudes = np.zeros([omegas.size])
+heaveAmplitudes = np.abs(waveHeight / 2 * modalSpringingResults.modalAmplitudes.values[:, 0, 2] * dryVibrationModesNormalized[2, 2])
+pitchAmplitudes = np.abs(waveHeight / 2 * modalSpringingResults.modalAmplitudes.values[:, 0, 4] * dryVibrationModesNormalized[5, 4])
 
 for i in range(omegas.size):
     displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
-
-    heaveAmplitudes[i] = np.abs(np.mean(displacements[2::7]))
-    pitchAmplitudes[i] = np.abs(np.mean(displacements[5::7]))
 
 bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity * hullLength**2 * hullBreadth * waveHeight/2)
 
@@ -164,6 +166,30 @@ x = np.linspace(0, hullLength, 500)
 displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
 shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
+
+# force decomposition
+froudeKrylovModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+diffractionModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+structuralMassModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+addedMassModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+radiationModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+hydrostaticStiffnessModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+structuralStiffnessModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+modalForcesFromDisplacementsMatrices = np.zeros([omegas.size, (beamSegments + 1) * 7, (beamSegments + 1) * 7], dtype = complex)
+
+for i in range(omegas.size):
+    froudeKrylovModalForces[i, :] = hydrodynamicResults.Froude_Krylov_force.values[i, 0, :]
+    diffractionModalForces[i, :] = hydrodynamicResults.diffraction_force.values[i, 0, :]
+
+    structuralMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    addedMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.addedMass.values[i, :, :] @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+
+    radiationModalForces[i, :] = complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :] @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+
+    hydrostaticStiffnessModalForces[i, :] = hydrostaticStiffness.values @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    structuralStiffnessModalForces[i, :] = np.diag(dryNaturalFrequenciesSquared) @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+
+    modalForcesFromDisplacementsMatrices[i, :, :] = -omegas[i]**2 * (np.eye((beamSegments + 1) * 7) + modalSpringingResults.addedMass.values[i, :, :]) + complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :] + hydrostaticStiffness.values + np.diag(dryNaturalFrequenciesSquared)
 
 
 
@@ -190,7 +216,7 @@ for i in range(omegas.size):
     print('%.2f               %.2f'%(omegas[i], midshipsBendingMomentAmplitudes[i]))
 print()
 
-# for i in range(6, 16):
+# for i in range(6):
 #     animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
 #     animation.run()
 
@@ -243,7 +269,6 @@ plt.savefig('solutions/%dmodesProper/midshipsBendingMomentCoefs.png'%numberModes
 plt.figure()
 plt.title('Heave RAO')
 plt.plot(hullLength/wavelengths, heaveAmplitudes / (waveHeight / 2), 'ko', label = 'Capytaine Hydroelasticity')
-plt.xlim([0,1.75])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Heave RAO [m/m]')
 plt.legend()
@@ -252,11 +277,50 @@ plt.savefig('solutions/%dmodesProper/heaveRAO.png'%numberModes)
 plt.figure()
 plt.title('Pitch RAO')
 plt.plot(hullLength/wavelengths, pitchAmplitudes / (waveHeight / wavelengths * np.pi), 'ko', label = 'Capytaine Hydroelasticity')
-plt.xlim([0,1.75])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Pitch RAO [rad/rad]')
 plt.legend()
 plt.savefig('solutions/%dmodesProper/pitchRAO.png'%numberModes)
+
+plt.figure()
+plt.title('Heave excitation force')
+plt.plot(hullLength/wavelengths, np.abs(hydrodynamicResults.excitation_force.values[:, 0, 2]), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Heave excitation force over square root of ship mass per unit wave amplitude [N/sqrt(kg) / m]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/heaveExcitation.png'%numberModes)
+
+plt.figure()
+plt.title('Pitch excitation force')
+plt.plot(hullLength/wavelengths, np.abs(hydrodynamicResults.excitation_force.values[:, 0, 4]), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Pitch excitation force over square root of pitch inertia per unit wave amplitude [Nm/sqrt(kg m2) / m]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/pitchExcitation.png'%numberModes)
+
+plt.figure()
+plt.title('Heave transfer function')
+plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFromForcesMatrices.values[:, 2, 2]), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Heave transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/heaveTransferFunction.png'%numberModes)
+
+plt.figure()
+plt.title('Pitch transfer function')
+plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFromForcesMatrices.values[:, 4, 4]), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Pitch transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/pitchTransferFunction.png'%numberModes)
+
+plt.figure()
+plt.title('Heave to pitch transfer function')
+plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFromForcesMatrices.values[:, 2, 4]), 'ko', label = 'Capytaine Hydroelasticity')
+plt.xlabel('Ship length / wavelength')
+plt.ylabel('Heave to pitch transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/heaveToPitchTransferFunction.png'%numberModes)
 
 plt.figure()
 plt.title('Vertical bending moment distribution for omega = %.2f rad/s'%omegas[omegaIndex])
