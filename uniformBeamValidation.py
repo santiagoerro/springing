@@ -48,7 +48,13 @@ horizontalTimoshenkoCoef = 3 * youngsModulus * horizontalAreaMoment / (horizonta
 
 warpingConstant = shearModulus * torsionConstant / (youngsModulus * warpingWavenumberBeamLength**2) * beamLength**2
 
-nodeXPositions = np.linspace(0, beamLength, beamSegments + 1)
+meshType = 'uniform'
+if meshType == 'uniform':
+    nodeXPositions = np.linspace(0, beamLength, beamSegments + 1)
+else:
+    nodeXPositions = np.linspace(0, beamLength, beamSegments)
+    nodeXPositions = np.sort(np.append(nodeXPositions, beamLength/(beamSegments - 1) / 2))
+
 sectionalAreas = np.ones([beamSegments]) * sectionArea
 verticalAreaMoments = np.ones([beamSegments]) * verticalAreaMoment
 horizontalAreaMoments = np.ones([beamSegments]) * horizontalAreaMoment

@@ -72,6 +72,7 @@ class Beam:
 
         self.numberSegments = self.segmentLengths.size
         self.numberNodes = self.nodeXPositions.size
+        self.meanSegmentLength = (self.nodeXPositions[-1] - self.nodeXPositions[0]) / self.numberSegments
 
 
         def GetArrayCheck(dictionary: dict, key: str, shape: tuple) -> np.ndarray:
@@ -425,6 +426,9 @@ class Beam:
             segmentMassMatrixStableBasis[w0, psi1] = segmentMassMatrixStableBasis[psi1, w0]
             segmentMassMatrixStableBasis[w1, psi1] = segmentMassMatrixStableBasis[psi1, w1]
 
+            assemblyBasisToStableBasisCoefsMatrix[w0, w0] = self.segmentLengths[i] / self.meanSegmentLength
+            assemblyBasisToStableBasisCoefsMatrix[w1, w1] = assemblyBasisToStableBasisCoefsMatrix[w0, w0]
+
             segmentMassMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentMassMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
 
             massMatrix[7 * i : 7 * (i + 2), 7 * i : 7 * (i + 2)] += segmentMassMatrixAssemblyBasis
@@ -568,6 +572,9 @@ class Beam:
 
             segmentStiffnessMatrixStableBasis[w1, w0] = segmentStiffnessMatrixStableBasis[w0, w1]
             segmentStiffnessMatrixStableBasis[w1, w1] = segmentStiffnessMatrixStableBasis[w0, w0]
+
+            assemblyBasisToStableBasisCoefsMatrix[w0, w0] = self.segmentLengths[i] / self.meanSegmentLength
+            assemblyBasisToStableBasisCoefsMatrix[w1, w1] = assemblyBasisToStableBasisCoefsMatrix[w0, w0]
 
             segmentStiffnessMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentStiffnessMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
 
@@ -714,7 +721,10 @@ class Beam:
             twistPhi0 = twistR0 + twistW0 + twistW1
             twistPhi1 = twistR1 - twistW0 - twistW1
 
-            return twistPhi0 * phi0 + twistW0 * w0 + twistPhi1 * phi1 + twistW1 * w1
+            twistW0Assembly = twistW0 * segmentLength / self.meanSegmentLength
+            twistW1Assembly = twistW1 * segmentLength / self.meanSegmentLength
+
+            return twistPhi0 * phi0 + twistW0Assembly * w0 + twistPhi1 * phi1 + twistW1Assembly * w1
 
         else:
             sys.exit('TODO: function must be one of [etc].')
@@ -916,7 +926,10 @@ class Beam:
             phi0TorsionMoment = r0TorsionMoment + w0TorsionMoment + w1TorsionMoment
             phi1TorsionMoment = r1TorsionMoment - w0TorsionMoment - w1TorsionMoment
 
-            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMoment + phi1 * phi1TorsionMoment + w1 * w1TorsionMoment
+            w0TorsionMomentAssembly = w0TorsionMoment * segmentLength / self.meanSegmentLength
+            w1TorsionMomentAssembly = w1TorsionMoment * segmentLength / self.meanSegmentLength
+
+            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMomentAssembly + phi1 * phi1TorsionMoment + w1 * w1TorsionMomentAssembly
 
             return torsionMomentValue + 0 * xSegment
 
@@ -952,7 +965,10 @@ class Beam:
             phi0TorsionMoment = r0TorsionMoment + w0TorsionMoment + w1TorsionMoment
             phi1TorsionMoment = r1TorsionMoment - w0TorsionMoment - w1TorsionMoment
 
-            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMoment + phi1 * phi1TorsionMoment + w1 * w1TorsionMoment
+            w0TorsionMomentAssembly = w0TorsionMoment * segmentLength / self.meanSegmentLength
+            w1TorsionMomentAssembly = w1TorsionMoment * segmentLength / self.meanSegmentLength
+
+            torsionMomentValue = phi0 * phi0TorsionMoment + w0 * w0TorsionMomentAssembly + phi1 * phi1TorsionMoment + w1 * w1TorsionMomentAssembly
 
             return torsionMomentValue
 
@@ -1167,13 +1183,14 @@ class Beam:
                         twistAngleWarping = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW1[segment, :])
 
                     twistAngleRoll = chiSegment - twistAngleWarpingAft - twistAngleWarping
+                    twistAngleWarpingAssembly = twistAngleWarping * segmentLength / self.meanSegmentLength
 
                     surgeDofDisplacements[face,:] = np.array([chiSegment, 0, 0])
                     swayDofDisplacements[face,:]  = np.array([-yFace * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
                     heaveDofDisplacements[face,:] = np.array([ zFaceFromNeutralAxis * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
                     rollDofDisplacements[face,:]    = np.array([0, -zFaceFromTwistCenter * twistAngleRoll, yFace * twistAngleRoll])
-                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarping, yFace * twistAngleWarping])
+                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarpingAssembly, yFace * twistAngleWarpingAssembly])
                     pitchDofDisplacements[face,:]   = np.array([ zFaceFromNeutralAxis * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
                     yawDofDisplacements[face,:]     = np.array([-yFace * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
@@ -1222,13 +1239,14 @@ class Beam:
                         twistAngleWarpingFore = np.dot(boundedBasis, self.boundedBasisCoefsForStableBasisW1[segment, :])
 
                     twistAngleRoll = 1 - chiSegment + twistAngleWarping + twistAngleWarpingFore
+                    twistAngleWarpingAssembly = twistAngleWarping * segmentLength / self.meanSegmentLength
 
                     surgeDofDisplacements[face,:] = np.array([1 - chiSegment, 0, 0])
                     swayDofDisplacements[face,:]  = np.array([-yFace * horizontalBendingRotationSway, horizontalBendingDeflectionSway, 0])
                     heaveDofDisplacements[face,:] = np.array([ zFaceFromNeutralAxis * verticalBendingRotationHeave, 0, verticalBendingDeflectionHeave])
 
                     rollDofDisplacements[face,:]    = np.array([0, -zFaceFromTwistCenter * twistAngleRoll, yFace * twistAngleRoll])
-                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarping, yFace * twistAngleWarping])
+                    warpingDofDisplacements[face,:] = np.array([0, -zFaceFromTwistCenter * twistAngleWarpingAssembly, yFace * twistAngleWarpingAssembly])
                     pitchDofDisplacements[face,:]   = np.array([ zFaceFromNeutralAxis * verticalBendingRotationPitch, 0, verticalBendingDeflectionPitch])
                     yawDofDisplacements[face,:]     = np.array([-yFace * horizontalBendingRotationYaw, horizontalBendingDeflectionYaw, 0])
 
