@@ -1520,7 +1520,11 @@ def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float,
     hydrostaticStiffness = np.zeros([numberDofs, numberDofs])
 
     for i in range(numberDofs):
+        if dofNames[i] in ['mode0', 'mode1', 'mode5']:
+            continue
         for j in range(numberDofs):
+            if dofNames[j] in ['mode0', 'mode1', 'mode5']:
+                continue
             dofiVerticalComponent = hullBody.dofs[dofNames[i]][:, 2]
             dofj = hullBody.dofs[dofNames[j]]
 
