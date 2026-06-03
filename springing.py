@@ -740,6 +740,30 @@ class Beam:
                 displacementFunction[mask] = self.SegmentDisplacementFunction(coordinatesSegment, segmentDisplacements, i, function)
 
         return displacementFunction
+    
+
+    def DisplacementField(self, points: np.ndarray, displacements: np.ndarray):
+        if not points.shape[0] == 3:
+            sys.exit('The points where the displacement field is to be evaluated must be provided as a (3,) or (3,n)-np.ndarray, for any number n of points to evaluate.')
+        
+        x = points[0]
+        y = points[1]
+        z = points[2]
+
+        axialDisplacements = self.DisplacementFunction(x, displacements, 'a')
+        horizontalDeflections = self.DisplacementFunction(x, displacements, 'h')
+        verticalDeflections = self.DisplacementFunction(x, displacements, 'v')
+        twistRotations = self.DisplacementFunction(x, displacements, 't')
+        pitchRotations = self.DisplacementFunction(x, displacements, 'p')
+        yawRotations = self.DisplacementFunction(x, displacements, 'q')
+
+        displacementField = np.zeros_like(points)
+
+        displacementField[0] = axialDisplacements + (z - self.zNeutralAxis) * pitchRotations - y * yawRotations
+        displacementField[1] = horizontalDeflections - (z - self.zTwistCenter) * twistRotations
+        displacementField[2] = verticalDeflections + y * twistRotations
+
+        return displacementField
 
 
     def SegmentInternalForce(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, force: str):
@@ -1192,6 +1216,34 @@ class Beam:
         return dofs
 
 
+    def CalculateNodalDOFsNew(self, hullMesh: cpt.Mesh):
+        dofs = {}
+
+        nodalDisplacements = np.eye(7 * self.numberNodes)
+
+        for vertex in range(self.numberNodes):
+            surgeDofName = 'x%d'%vertex # axial
+            swayDofName  = 'y%d'%vertex # bending horizontal
+            heaveDofName = 'z%d'%vertex # bending vertical
+
+            rollDofName  = 'roll%d'%vertex      # torsion
+            warpingDofName = 'warping%d'%vertex # torsion
+            pitchDofName = 'pitch%d'%vertex     # bending horizontal
+            yawDofName   = 'yaw%d'%vertex       # bending vertical
+
+            dofs[surgeDofName] = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 0]).transpose()
+            dofs[swayDofName]  = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 1]).transpose()
+            dofs[heaveDofName] = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 2]).transpose()
+
+            dofs[rollDofName]    = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 3]).transpose()
+            dofs[warpingDofName] = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 4]).transpose()
+            dofs[pitchDofName]   = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 5]).transpose()
+            dofs[yawDofName]     = self.DisplacementField(hullMesh.faces_centers.transpose(), nodalDisplacements[:, 7 * vertex + 6]).transpose()
+
+        return dofs
+
+
+
     def CalculateModes(self, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
         if numberModes < 6:
             sys.exit('numberModes must be greater than or equal to 6: at least the rigid body modes must be considered.')
@@ -1267,6 +1319,20 @@ class Beam:
             modalDofs[modeName] = modeDisplacements
 
         return requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized, modalDofs
+
+
+    def CalculateModalVertexDOFs(self, hullMesh: cpt.Mesh, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+        _, dryVibrationModesNormalized = self.CalculateModes(self.numberNodes * 7, rigidBodyModesFrequencySquaredTolerance)
+
+        modalVertexDofs = {}
+
+        for i in range(dryVibrationModesNormalized.shape[1]):
+            nodalDisplacements = dryVibrationModesNormalized[:, i]
+
+            modeName = 'mode%d'%i
+            modalVertexDofs[modeName] = self.DisplacementField(hullMesh.vertices.transpose(), nodalDisplacements)
+
+        return modalVertexDofs    
 
 
 
@@ -1501,6 +1567,39 @@ def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float,
             dofj = hullBody.dofs[dofNames[j]]
 
             hydrostaticStiffness[i, j] = np.sum(hullBody.dof_normals(dofj) * dofiVerticalComponent * hullBody.mesh.faces_areas)
+
+    hydrostaticStiffnessDataArray = xr.DataArray(-waterDensity * gravity * hydrostaticStiffness, dims = ['influenced_dof', 'radiating_dof'])
+
+    return hydrostaticStiffnessDataArray
+
+
+def ComputeHydrostaticStiffnessNewMethod(hullBody: cpt.FloatingBody, vertexDofs: dict, dofJacobians: dict, waterDensity: float, gravity: float):
+    numberDofs = len(hullBody.dofs)
+    dofNames = list(hullBody.dofs.keys())
+
+    hydrostaticStiffness = np.zeros([numberDofs, numberDofs])
+
+    for i in range(numberDofs):
+        dofi = hullBody.dofs[dofNames[i]]
+        dofiVertexDisplacements = vertexDofs[dofNames[i]]
+        for j in range(numberDofs):
+            dofj = hullBody.dofs[dofNames[j]]
+            dofjJacobians = dofJacobians[dofNames[j]]
+
+            vertexCoords = hullBody.mesh.vertices[hullBody.mesh.faces, :]
+            vertexDisplacementsDofi = dofiVertexDisplacements[hullBody.mesh.faces, :]
+
+            normalsTimesAreasDeviationDofi  = 0.5 * np.cross(vertexDisplacementsDofi[:, 1, :] - vertexDisplacementsDofi[:, 0, :], vertexCoords[:, 2, :] - vertexCoords[:, 1, :])
+            normalsTimesAreasDeviationDofi += 0.5 * np.cross(vertexCoords[:, 1, :] - vertexCoords[:, 0, :], vertexDisplacementsDofi[:, 2, :] - vertexDisplacementsDofi[:, 1, :])
+
+            normalsTimesAreasDeviationDofi += 0.5 * np.cross(vertexDisplacementsDofi[:, 3, :] - vertexDisplacementsDofi[:, 2, :], vertexCoords[:, 0, :] - vertexCoords[:, 3, :])
+            normalsTimesAreasDeviationDofi += 0.5 * np.cross(vertexCoords[:, 3, :] - vertexCoords[:, 2, :], vertexDisplacementsDofi[:, 0, :] - vertexDisplacementsDofi[:, 3, :])
+
+            dofjDeviationFromDofi = np.matvec(dofjJacobians, dofi)
+
+            hydrostaticStiffness[j, i] = np.sum(hullBody.dof_normals(dofj) * dofi[:, 2] * hullBody.mesh.faces_areas)
+            hydrostaticStiffness[j, i] += np.sum(hullBody.mesh.faces_centers[:, 2] * np.sum(normalsTimesAreasDeviationDofi * dofj, axis = 1))
+            hydrostaticStiffness[j, i] += np.sum(hullBody.mesh.faces_centers[:, 2] * hullBody.dof_normals(dofjDeviationFromDofi) * hullBody.mesh.faces_areas)
 
     hydrostaticStiffnessDataArray = xr.DataArray(-waterDensity * gravity * hydrostaticStiffness, dims = ['influenced_dof', 'radiating_dof'])
 
