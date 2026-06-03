@@ -1,7 +1,6 @@
 import numpy as np
 import capytaine as cpt
 import xarray as xr
-import sys
 import os
 import springing as spr
 from matplotlib import pyplot as plt
@@ -71,6 +70,11 @@ centerOfMass = (0, 0, zNeutralAxis)
 uniformlyDistributedMass = hullDisplacement - np.sum(pointMasses)
 linearDensitiesBeam = np.ones([beamSegments]) * uniformlyDistributedMass / hullLength
 
+pointMassXPositions = pointMassStations * hullLength/20 - hullLength/2
+pointMassPositions = np.zeros([pointMasses.size, 3])
+pointMassPositions[:, 0] = pointMassXPositions
+pointMassPositions[:, 2] = zNeutralAxis
+
 beamDefinition = {}
 beamDefinition['nodeXPositions'] = np.linspace(-hullLength/2, hullLength/2, beamSegments + 1)
 beamDefinition['crossSectionAreas'] = sectionalAreas
@@ -87,24 +91,11 @@ beamDefinition['zTwistCenter'] = zTwistCenter
 beamDefinition['linearDensities'] = linearDensitiesBeam
 beamDefinition['zCentersOfMass'] = np.ones([beamSegments]) * zNeutralAxis
 beamDefinition['rollInertias'] = linearDensitiesBeam * (hullBreadth*0.35)**2
+beamDefinition['pointMasses'] = pointMasses
+beamDefinition['pointMassPositions'] = pointMassPositions
 
 # beam is assumed to be parallel to the x axis and oriented towards its positive direction, i.e., the beam normal is [1,0,0]
 beam = spr.Beam(beamDefinition)
-
-if not beamSegments % 40 == 0:
-    sys.exit('Beam must be discretized in a number of segments that is a multiple of 40.')
-segmentsPerHalfStation = beamSegments / 40
-for i in range(pointMasses.size):
-    vertex = int(pointMassStations[i] * 2 * segmentsPerHalfStation)
-
-    beam.massMatrix[7 * vertex    , 7 * vertex    ] += pointMasses[i]
-    beam.massMatrix[7 * vertex + 1, 7 * vertex + 1] += pointMasses[i]
-    beam.massMatrix[7 * vertex + 2, 7 * vertex + 2] += pointMasses[i]
-
-    beam.massMatrix[7 * vertex + 3, 7 * vertex + 3] += pointMasses[i] * (zNeutralAxis - zTwistCenter)**2
-
-    beam.massMatrix[7 * vertex + 1, 7 * vertex + 3] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
-    beam.massMatrix[7 * vertex + 3, 7 * vertex + 1] -= pointMasses[i] * (zNeutralAxis - zTwistCenter)
 
 # mesh generation
 panelsLength = int(round(panelsPerMeter * hullLength))

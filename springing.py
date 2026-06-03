@@ -174,7 +174,19 @@ class Beam:
             zCentersOfMass = GetArrayCheck(beamDefinition, 'zCentersOfMass', segmentsShape)
             rollInertias = GetArrayCheck(beamDefinition, 'rollInertias', segmentsShape)
 
-            self.massMatrix = self.UniformlyDistributedMassMatrix(linearDensities, zCentersOfMass, rollInertias)
+            if 'pointMassPositions' in beamDefinition and not 'pointMasses' in beamDefinition:
+                sys.exit('Both pointMasses and pointMassPositions must be provided if one wishes to add point masses to the mass matrix calculation.')
+
+            if 'pointMasses' in beamDefinition:
+                pointMasses = beamDefinition['pointMasses']
+                if not 'pointMassPositions' in beamDefinition:
+                    sys.exit('Both pointMasses and pointMassPositions must be provided if one wishes to add point masses to the mass matrix calculation.')
+                pointMassPositions = GetArrayCheck(beamDefinition, 'pointMassPositions', (pointMasses.size, 3))
+            else:
+                pointMasses = np.array([])
+                pointMassPositions = np.array([])
+
+            self.massMatrix = self.UniformlyDistributedMassMatrix(linearDensities, zCentersOfMass, rollInertias, pointMasses, pointMassPositions)
 
         if 'stiffnessMatrix' in beamDefinition:
             self.stiffnessMatrix = GetArrayCheck(beamDefinition, 'stiffnessMatrix', matrixShape)
@@ -182,7 +194,7 @@ class Beam:
             self.stiffnessMatrix = self.StiffnessMatrix()
 
 
-    def UniformlyDistributedMassMatrix(self, linearDensities: np.ndarray, zCentersOfMass: np.ndarray, rollInertias: np.ndarray):
+    def UniformlyDistributedMassMatrix(self, linearDensities: np.ndarray, zCentersOfMass: np.ndarray, rollInertias: np.ndarray, pointMasses: np.ndarray = np.array([]), pointMassPositions: np.ndarray = np.array([])):
         """
         Creates a mass matrix for the Finite Elements Method, assuming linearly uniformly distributed
         mass within each segment. Throughout, `n` corresponds to the beam's number of nodes.
@@ -416,6 +428,22 @@ class Beam:
             segmentMassMatrixAssemblyBasis = assemblyBasisToStableBasisCoefsMatrix.transpose() @ segmentMassMatrixStableBasis @ assemblyBasisToStableBasisCoefsMatrix
 
             massMatrix[7 * i : 7 * (i + 2), 7 * i : 7 * (i + 2)] += segmentMassMatrixAssemblyBasis
+
+        for i in range(pointMasses.size):
+            segmentIndex = np.searchsorted(self.nodeXPositions, pointMassPositions[i, 0], side = 'right') - 1
+
+            firstAffectedDof = max(0, 7 * segmentIndex)
+            affectedDofs = min(7 * (segmentIndex + 2), 7 * self.numberNodes) - firstAffectedDof
+
+            displacementFields = np.zeros([affectedDofs, 3])
+
+            for j in range(affectedDofs):
+                displacements = np.zeros(7 * self.numberNodes)
+                displacements[firstAffectedDof + j] = 1
+
+                displacementFields[j, :] = self.DisplacementField(pointMassPositions[i, :], displacements)
+
+            massMatrix[firstAffectedDof : firstAffectedDof + affectedDofs, firstAffectedDof : firstAffectedDof + affectedDofs] += pointMasses[i] * displacementFields @ displacementFields.transpose()
 
         return massMatrix
 
