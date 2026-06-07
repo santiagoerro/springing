@@ -58,6 +58,9 @@ panelsPerMeter = 65
 # number of modal components considered
 numberModes = 6
 
+# detailed analysis frequency
+omegaDetail = 6.07
+
 
 
 # CALCULATIONS
@@ -106,7 +109,7 @@ hullSize = (hullLength, hullBreadth, hullDepth)
 hullCenter = (0, 0, -hullDraft + hullDepth/2)
 meshResolution = (panelsLength, panelsBreadth, panelsDepth)
 
-hullMesh = cpt.mesh_parallelepiped(size = hullSize, center = hullCenter, name = 'hull', resolution = meshResolution).immersed_part()
+hullMesh: cpt.Mesh = cpt.mesh_parallelepiped(size = hullSize, center = hullCenter, name = 'hull', resolution = meshResolution).immersed_part()
 
 # creation of dofs from mesh and beam
 dryNaturalFrequenciesSquared, dryVibrationModesNormalized, modalDofs = beam.CalculateModalDOFs(hullMesh, (beamSegments + 1) * 7)
@@ -122,7 +125,7 @@ testMatrix = xr.Dataset(coords={
     'radiating_dof': list(hullBody.dofs)[:numberModes],
     'water_depth': waterDepths,
     'rho': waterDensity,
-    'g' : gravity
+    'g': gravity
 })
 
 # hydrostatic stiffness calculation
@@ -130,6 +133,10 @@ hydrostaticStiffness = spr.ComputeHydrostaticStiffness(hullBody, waterDensity, g
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
+omegaIndex = np.argmin(np.abs(omegas - omegaDetail))
+diffractionProblem = cpt.DiffractionProblem(body = hullBody, omega = omegas[omegaIndex], wave_direction = waveDirections[0], water_depth = waterDepths[0], rho = waterDensity, g = gravity)
+diffractionResults = cpt.BEMSolver().solve(diffractionProblem, keep_details = True)
+froudeKrylovPressures = cpt.bem.airy_waves.airy_waves_pressure(hullMesh.faces_centers, diffractionProblem)
 
 # coupling of hydrodynamic and structural results, springing results
 modalSpringingResults = spr.ModalProperSpringingResults(dryNaturalFrequenciesSquared, hydrostaticStiffness, hydrodynamicResults)
@@ -151,8 +158,6 @@ bendingMomentCoefs = midshipsBendingMomentAmplitudes / (waterDensity * gravity *
 wavelengths = hydrodynamicResults.wavelength.values
 
 # bending moment and shear force distributions
-omegaPlots = 6.07
-omegaIndex = np.argmin(np.abs(omegas - omegaPlots))
 x = np.linspace(0, hullLength, 500)
 displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
@@ -166,6 +171,7 @@ addedMassModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = c
 radiationModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
 hydrostaticStiffnessModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
 structuralStiffnessModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
+matrixTimesAmplitudesModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
 modalForcesFromDisplacementsMatrices = np.zeros([omegas.size, (beamSegments + 1) * 7, (beamSegments + 1) * 7], dtype = complex)
 
 for i in range(omegas.size):
@@ -173,14 +179,109 @@ for i in range(omegas.size):
     diffractionModalForces[i, :] = hydrodynamicResults.diffraction_force.values[i, 0, :]
 
     structuralMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.modalAmplitudes.values[i, 0, :]
-    addedMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.addedMass.values[i, :, :] @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    addedMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.addedMass.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
-    radiationModalForces[i, :] = complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :] @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    radiationModalForces[i, :] = complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
     hydrostaticStiffnessModalForces[i, :] = hydrostaticStiffness.values @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     structuralStiffnessModalForces[i, :] = np.diag(dryNaturalFrequenciesSquared) @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
-    modalForcesFromDisplacementsMatrices[i, :, :] = -omegas[i]**2 * (np.eye((beamSegments + 1) * 7) + modalSpringingResults.addedMass.values[i, :, :]) + complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :] + hydrostaticStiffness.values + np.diag(dryNaturalFrequenciesSquared)
+    matrixTimesAmplitudesModalForces[i, :] = modalSpringingResults.modalForcesFromAmplitudesMatrices.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+
+    modalForcesFromDisplacementsMatrices[i, :, :] = -omegas[i]**2 * (np.eye((beamSegments + 1) * 7) + modalSpringingResults.addedMass.values[i, :, :].transpose()) + complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() + hydrostaticStiffness.values + np.diag(dryNaturalFrequenciesSquared)
+
+# excitationModalForces = froudeKrylovModalForces + diffractionModalForces
+
+# excitationRigidBodyModalForcesNorms = np.linalg.norm(excitationModalForces[:, :6], axis = 1)
+
+# froudeKrylovRigidBodyModalForcesNorms = np.linalg.norm(froudeKrylovModalForces[:, :6], axis = 1)
+# diffractionRigidBodyModalForcesNorms = np.linalg.norm(diffractionModalForces[:, :6], axis = 1)
+# structuralMassRigidBodyModalForcesNorms = np.linalg.norm(structuralMassModalForces[:, :6], axis = 1)
+# addedMassRigidBodyModalForcesNorms = np.linalg.norm(addedMassModalForces[:, :6], axis = 1)
+# radiationRigidBodyModalForcesNorms = np.linalg.norm(radiationModalForces[:, :6], axis = 1)
+# hydrostaticStiffnessRigidBodyModalForcesNorms = np.linalg.norm(hydrostaticStiffnessModalForces[:, :6], axis = 1)
+# structuralStiffnessRigidBodyModalForcesNorms = np.linalg.norm(structuralStiffnessModalForces[:, :6], axis = 1)
+
+# froudeKrylovRigidBodyModalForcesCosWRTExcitation = np.sum(froudeKrylovModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / froudeKrylovRigidBodyModalForcesNorms
+# diffractionRigidBodyModalForcesCosWRTExcitation = np.sum(diffractionModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / diffractionRigidBodyModalForcesNorms
+# structuralMassRigidBodyModalForcesCosWRTExcitation = np.sum(structuralMassModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / structuralMassRigidBodyModalForcesNorms
+# addedMassRigidBodyModalForcesCosWRTExcitation = np.sum(addedMassModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / addedMassRigidBodyModalForcesNorms
+# radiationRigidBodyModalForcesCosWRTExcitation = np.sum(radiationModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / radiationRigidBodyModalForcesNorms
+# hydrostaticStiffnessRigidBodyModalForcesCosWRTExcitation = np.sum(hydrostaticStiffnessModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / hydrostaticStiffnessRigidBodyModalForcesNorms
+# structuralStiffnessRigidBodyModalForcesCosWRTExcitation = np.sum(structuralStiffnessModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / structuralStiffnessRigidBodyModalForcesNorms
+
+# excitationElasticModalForcesNorms = np.linalg.norm(excitationModalForces[:, 6:13], axis = 1)
+
+# froudeKrylovElasticModalForcesNorms = np.linalg.norm(froudeKrylovModalForces[:, 6:13], axis = 1)
+# diffractionElasticModalForcesNorms = np.linalg.norm(diffractionModalForces[:, 6:13], axis = 1)
+# structuralMassElasticModalForcesNorms = np.linalg.norm(structuralMassModalForces[:, 6:13], axis = 1)
+# addedMassElasticModalForcesNorms = np.linalg.norm(addedMassModalForces[:, 6:13], axis = 1)
+# radiationElasticModalForcesNorms = np.linalg.norm(radiationModalForces[:, 6:13], axis = 1)
+# hydrostaticStiffnessElasticModalForcesNorms = np.linalg.norm(hydrostaticStiffnessModalForces[:, 6:13], axis = 1)
+# structuralStiffnessElasticModalForcesNorms = np.linalg.norm(structuralStiffnessModalForces[:, 6:13], axis = 1)
+
+# froudeKrylovElasticModalForcesCosWRTExcitation = np.sum(froudeKrylovModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / froudeKrylovElasticModalForcesNorms
+# diffractionElasticModalForcesCosWRTExcitation = np.sum(diffractionModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / diffractionElasticModalForcesNorms
+# structuralMassElasticModalForcesCosWRTExcitation = np.sum(structuralMassModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / structuralMassElasticModalForcesNorms
+# addedMassElasticModalForcesCosWRTExcitation = np.sum(addedMassModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / addedMassElasticModalForcesNorms
+# radiationElasticModalForcesCosWRTExcitation = np.sum(radiationModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / radiationElasticModalForcesNorms
+# hydrostaticStiffnessElasticModalForcesCosWRTExcitation = np.sum(hydrostaticStiffnessModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / hydrostaticStiffnessElasticModalForcesNorms
+# structuralStiffnessElasticModalForcesCosWRTExcitation = np.sum(structuralStiffnessModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / structuralStiffnessElasticModalForcesNorms
+
+def MidshipsBendingMomentFromModalForces(modalForces: np.ndarray):
+    elasticModalDisplacements = np.diag(1 / dryNaturalFrequenciesSquared[6:]) @ modalForces[6:]
+    nodalDisplacements = waveHeight / 2 * dryVibrationModesNormalized[:, 6:] @ elasticModalDisplacements
+    return beam.InternalForce(hullLength / 2, nodalDisplacements, 'mv')
+
+bendingMomentsFromFroudeKrylovForces = np.zeros([omegas.size], dtype = complex)
+bendingMomentsFromDiffractionForces = np.zeros([omegas.size], dtype = complex)
+bendingMomentsFromStructuralMassForces = np.zeros([omegas.size], dtype = complex)
+bendingMomentsFromAddedMassForces = np.zeros([omegas.size], dtype = complex)
+bendingMomentsFromRadiationForces = np.zeros([omegas.size], dtype = complex)
+bendingMomentsFromHydrostaticStiffnessForces = np.zeros([omegas.size], dtype = complex)
+
+for i in range(omegas.size):
+    bendingMomentsFromFroudeKrylovForces[i] = MidshipsBendingMomentFromModalForces(froudeKrylovModalForces[i, :])
+    bendingMomentsFromDiffractionForces[i] = MidshipsBendingMomentFromModalForces(diffractionModalForces[i, :])
+    bendingMomentsFromStructuralMassForces[i] = MidshipsBendingMomentFromModalForces(-structuralMassModalForces[i, :])
+    bendingMomentsFromAddedMassForces[i] = MidshipsBendingMomentFromModalForces(-addedMassModalForces[i, :])
+    bendingMomentsFromRadiationForces[i] = MidshipsBendingMomentFromModalForces(-radiationModalForces[i, :])
+    bendingMomentsFromHydrostaticStiffnessForces[i] = MidshipsBendingMomentFromModalForces(-hydrostaticStiffnessModalForces[i, :])
+
+# integration of excitation pressures to compute shear forces and bending moments
+xVerticalLoads = np.linspace(-hullLength/2 + hullLength/panelsLength/2, hullLength/2 - hullLength/panelsLength/2, panelsLength)
+verticalFroudeKrylovLoads = np.zeros_like(xVerticalLoads, dtype = froudeKrylovPressures.dtype)
+verticalDiffractionLoads = np.zeros_like(xVerticalLoads, dtype = froudeKrylovPressures.dtype)
+
+for i in range(hullMesh.nb_faces):
+    xPositionIndex = np.argmin(np.abs(xVerticalLoads - hullMesh.faces_centers[i, 0]))
+
+    verticalFroudeKrylovLoads[xPositionIndex] -= waveHeight/2 * froudeKrylovPressures[i] * hullMesh.faces_areas[i] * hullMesh.faces_normals[i, 2] / (hullLength/panelsLength)
+    verticalDiffractionLoads[xPositionIndex] -= waveHeight/2 * diffractionResults.pressure[i] * hullMesh.faces_areas[i] * hullMesh.faces_normals[i, 2] / (hullLength/panelsLength)
+
+verticalFroudeKrylovLoads -= np.sum(verticalFroudeKrylovLoads * xVerticalLoads) / np.sum(xVerticalLoads**2) * xVerticalLoads
+verticalDiffractionLoads -= np.sum(verticalDiffractionLoads * xVerticalLoads) / np.sum(xVerticalLoads**2) * xVerticalLoads
+
+verticalFroudeKrylovLoads -= np.mean(verticalFroudeKrylovLoads)
+verticalDiffractionLoads -= np.mean(verticalDiffractionLoads)
+
+xForceDistributions = np.linspace(-hullLength/2, hullLength/2, panelsLength + 1)
+froudeKrylovShearForces = np.zeros_like(xForceDistributions, dtype = froudeKrylovPressures.dtype)
+diffractionShearForces = np.zeros_like(xForceDistributions, dtype = froudeKrylovPressures.dtype)
+
+for i in range(1, xForceDistributions.size):
+    froudeKrylovShearForces[i] = froudeKrylovShearForces[i - 1] - verticalFroudeKrylovLoads[i - 1] * hullLength/panelsLength
+    diffractionShearForces[i] = diffractionShearForces[i - 1] - verticalDiffractionLoads[i - 1] * hullLength/panelsLength
+
+froudeKrylovBendingMoments = np.zeros_like(xForceDistributions, dtype = froudeKrylovPressures.dtype)
+diffractionBendingMoments = np.zeros_like(xForceDistributions, dtype = froudeKrylovPressures.dtype)
+
+for i in range(1, xForceDistributions.size):
+    froudeKrylovBendingMoments[i] = froudeKrylovBendingMoments[i - 1] + 0.5 * (froudeKrylovShearForces[i - 1] + froudeKrylovShearForces[i]) * hullLength/panelsLength
+    diffractionBendingMoments[i] = diffractionBendingMoments[i - 1] + 0.5 * (diffractionShearForces[i - 1] + diffractionShearForces[i]) * hullLength/panelsLength
+
+excitationShearForces = froudeKrylovShearForces + diffractionShearForces
+excitationBendingMoments = froudeKrylovBendingMoments + diffractionBendingMoments
 
 
 
@@ -250,7 +351,7 @@ for series in midshipsBendingMomentCoefsExperimental:
     else:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, midshipsBendingMomentCoefs2DNumerical, 'k--', label = '2D Hydroelascity')
-plt.xlim([0,1.75])
+plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
 plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
@@ -315,8 +416,11 @@ plt.savefig('solutions/%dmodesProper/heaveToPitchTransferFunction.png'%numberMod
 
 plt.figure()
 plt.title('Vertical bending moment distribution for omega = %.2f rad/s'%omegas[omegaIndex])
-plt.plot(x, np.imag(bendingMomentDistribution), 'g', label = 'Imaginary part')
-plt.plot(x, np.real(bendingMomentDistribution), 'k', label = 'Real part')
+plt.plot(x, np.imag(bendingMomentDistribution), 'g', label = 'Imaginary part, full springing results')
+plt.plot(x, np.real(bendingMomentDistribution), 'k', label = 'Real part, full springing results')
+plt.plot(xForceDistributions + hullLength/2, np.imag(excitationBendingMoments), 'g--', label = 'Imaginary part, manual integration of excitation pressures')
+plt.plot(xForceDistributions + hullLength/2, np.real(excitationBendingMoments), 'k--', label = 'Real part, manual integration of excitation pressures')
+plt.ylim([-1.2, 4.5])
 plt.xlabel('x [m]')
 plt.ylabel('Vertical bending moment [Nm]')
 plt.legend()
@@ -324,12 +428,36 @@ plt.savefig('solutions/%dmodesProper/bendingMomentDistribution.png'%numberModes)
 
 plt.figure()
 plt.title('Vertical shear force distribution for omega = %.2f rad/s'%omegas[omegaIndex])
-plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part')
-plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part')
+plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part, full springing results')
+plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part, full springing results')
+plt.plot(xForceDistributions + hullLength/2, np.imag(excitationShearForces), 'g--', label = 'Imaginary part, manual integration of excitation pressures')
+plt.plot(xForceDistributions + hullLength/2, np.real(excitationShearForces), 'k--', label = 'Real part, manual integration of excitation pressures')
+plt.ylim([-6, 11])
 plt.xlabel('x [m]')
 plt.ylabel('Vertical shear force [N]')
 plt.legend()
 plt.savefig('solutions/%dmodesProper/shearForceDistribution.png'%numberModes)
+
+plt.figure(figsize = (20,10))
+plt.title('Midships bending moment force decomposition')
+plt.plot(omegas, np.real(midshipsBendingMoments), 'ko', label = 'Full, real')
+plt.plot(omegas, np.imag(midshipsBendingMoments), 'kx', label = 'Full, imag')
+plt.plot(omegas, np.real(bendingMomentsFromFroudeKrylovForces), 'yo', label = 'Froude-Krylov, real')
+plt.plot(omegas, np.imag(bendingMomentsFromFroudeKrylovForces), 'yx', label = 'Froude-Krylov, imag')
+plt.plot(omegas, np.real(bendingMomentsFromDiffractionForces), 'co', label = 'Diffraction, real')
+plt.plot(omegas, np.imag(bendingMomentsFromDiffractionForces), 'cx', label = 'Diffraction, imag')
+plt.plot(omegas, np.real(bendingMomentsFromStructuralMassForces), 'mo', label = 'Structural mass, real')
+plt.plot(omegas, np.imag(bendingMomentsFromStructuralMassForces), 'mx', label = 'Structural mass, imag')
+plt.plot(omegas, np.real(bendingMomentsFromAddedMassForces), 'ro', label = 'Added mass, real')
+plt.plot(omegas, np.imag(bendingMomentsFromAddedMassForces), 'rx', label = 'Added mass, imag')
+plt.plot(omegas, np.real(bendingMomentsFromRadiationForces), 'go', label = 'Radiation, real')
+plt.plot(omegas, np.imag(bendingMomentsFromRadiationForces), 'gx', label = 'Radiation, imag')
+plt.plot(omegas, np.real(bendingMomentsFromHydrostaticStiffnessForces), 'bo', label = 'Hydrostatic stiffness, real')
+plt.plot(omegas, np.imag(bendingMomentsFromHydrostaticStiffnessForces), 'bx', label = 'Hydrostatic stiffness, imag')
+plt.xlabel('omega [rad/s]')
+plt.ylabel('Bending moment [Nm]')
+plt.legend()
+plt.savefig('solutions/%dmodesProper/bendingMomentDecomposition.png'%numberModes)
 
 plt.show()
 
