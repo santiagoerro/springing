@@ -4,6 +4,8 @@ import xarray as xr
 import os
 import springing as spr
 from matplotlib import pyplot as plt
+from capytaine.bem.airy_waves import airy_waves_free_surface_elevation
+from capytaine.ui.vtk.animation import Animation
 
 cpt.set_logging('INFO')
 
@@ -181,52 +183,14 @@ for i in range(omegas.size):
     structuralMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.modalAmplitudes.values[i, 0, :]
     addedMassModalForces[i, :] = -omegas[i]**2 * modalSpringingResults.addedMass.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
-    radiationModalForces[i, :] = complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
+    radiationModalForces[i, :] = -complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
     hydrostaticStiffnessModalForces[i, :] = hydrostaticStiffness.values @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
     structuralStiffnessModalForces[i, :] = np.diag(dryNaturalFrequenciesSquared) @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
     matrixTimesAmplitudesModalForces[i, :] = modalSpringingResults.modalForcesFromAmplitudesMatrices.values[i, :, :].transpose() @ modalSpringingResults.modalAmplitudes.values[i, 0, :]
 
-    modalForcesFromDisplacementsMatrices[i, :, :] = -omegas[i]**2 * (np.eye((beamSegments + 1) * 7) + modalSpringingResults.addedMass.values[i, :, :].transpose()) + complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() + hydrostaticStiffness.values + np.diag(dryNaturalFrequenciesSquared)
-
-# excitationModalForces = froudeKrylovModalForces + diffractionModalForces
-
-# excitationRigidBodyModalForcesNorms = np.linalg.norm(excitationModalForces[:, :6], axis = 1)
-
-# froudeKrylovRigidBodyModalForcesNorms = np.linalg.norm(froudeKrylovModalForces[:, :6], axis = 1)
-# diffractionRigidBodyModalForcesNorms = np.linalg.norm(diffractionModalForces[:, :6], axis = 1)
-# structuralMassRigidBodyModalForcesNorms = np.linalg.norm(structuralMassModalForces[:, :6], axis = 1)
-# addedMassRigidBodyModalForcesNorms = np.linalg.norm(addedMassModalForces[:, :6], axis = 1)
-# radiationRigidBodyModalForcesNorms = np.linalg.norm(radiationModalForces[:, :6], axis = 1)
-# hydrostaticStiffnessRigidBodyModalForcesNorms = np.linalg.norm(hydrostaticStiffnessModalForces[:, :6], axis = 1)
-# structuralStiffnessRigidBodyModalForcesNorms = np.linalg.norm(structuralStiffnessModalForces[:, :6], axis = 1)
-
-# froudeKrylovRigidBodyModalForcesCosWRTExcitation = np.sum(froudeKrylovModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / froudeKrylovRigidBodyModalForcesNorms
-# diffractionRigidBodyModalForcesCosWRTExcitation = np.sum(diffractionModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / diffractionRigidBodyModalForcesNorms
-# structuralMassRigidBodyModalForcesCosWRTExcitation = np.sum(structuralMassModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / structuralMassRigidBodyModalForcesNorms
-# addedMassRigidBodyModalForcesCosWRTExcitation = np.sum(addedMassModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / addedMassRigidBodyModalForcesNorms
-# radiationRigidBodyModalForcesCosWRTExcitation = np.sum(radiationModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / radiationRigidBodyModalForcesNorms
-# hydrostaticStiffnessRigidBodyModalForcesCosWRTExcitation = np.sum(hydrostaticStiffnessModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / hydrostaticStiffnessRigidBodyModalForcesNorms
-# structuralStiffnessRigidBodyModalForcesCosWRTExcitation = np.sum(structuralStiffnessModalForces[:, :6] * np.conj(excitationModalForces[:, :6]), axis = 1) / excitationRigidBodyModalForcesNorms / structuralStiffnessRigidBodyModalForcesNorms
-
-# excitationElasticModalForcesNorms = np.linalg.norm(excitationModalForces[:, 6:13], axis = 1)
-
-# froudeKrylovElasticModalForcesNorms = np.linalg.norm(froudeKrylovModalForces[:, 6:13], axis = 1)
-# diffractionElasticModalForcesNorms = np.linalg.norm(diffractionModalForces[:, 6:13], axis = 1)
-# structuralMassElasticModalForcesNorms = np.linalg.norm(structuralMassModalForces[:, 6:13], axis = 1)
-# addedMassElasticModalForcesNorms = np.linalg.norm(addedMassModalForces[:, 6:13], axis = 1)
-# radiationElasticModalForcesNorms = np.linalg.norm(radiationModalForces[:, 6:13], axis = 1)
-# hydrostaticStiffnessElasticModalForcesNorms = np.linalg.norm(hydrostaticStiffnessModalForces[:, 6:13], axis = 1)
-# structuralStiffnessElasticModalForcesNorms = np.linalg.norm(structuralStiffnessModalForces[:, 6:13], axis = 1)
-
-# froudeKrylovElasticModalForcesCosWRTExcitation = np.sum(froudeKrylovModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / froudeKrylovElasticModalForcesNorms
-# diffractionElasticModalForcesCosWRTExcitation = np.sum(diffractionModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / diffractionElasticModalForcesNorms
-# structuralMassElasticModalForcesCosWRTExcitation = np.sum(structuralMassModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / structuralMassElasticModalForcesNorms
-# addedMassElasticModalForcesCosWRTExcitation = np.sum(addedMassModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / addedMassElasticModalForcesNorms
-# radiationElasticModalForcesCosWRTExcitation = np.sum(radiationModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / radiationElasticModalForcesNorms
-# hydrostaticStiffnessElasticModalForcesCosWRTExcitation = np.sum(hydrostaticStiffnessModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / hydrostaticStiffnessElasticModalForcesNorms
-# structuralStiffnessElasticModalForcesCosWRTExcitation = np.sum(structuralStiffnessModalForces[:, 6:13] * np.conj(excitationModalForces[:, 6:13]), axis = 1) / excitationElasticModalForcesNorms / structuralStiffnessElasticModalForcesNorms
+    modalForcesFromDisplacementsMatrices[i, :, :] = -omegas[i]**2 * (np.eye((beamSegments + 1) * 7) + modalSpringingResults.addedMass.values[i, :, :].transpose()) - complex(0, 1) * omegas[i] * modalSpringingResults.radiationDamping.values[i, :, :].transpose() + hydrostaticStiffness.values + np.diag(dryNaturalFrequenciesSquared)
 
 def MidshipsBendingMomentFromModalForces(modalForces: np.ndarray):
     elasticModalDisplacements = np.diag(1 / dryNaturalFrequenciesSquared[6:]) @ modalForces[6:]
@@ -467,8 +431,10 @@ motion = {}
 dofIndex = 0
 
 for dof in hullBody.dofs.keys():
-    motion[dof] = waveHeight * modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, dofIndex]
+    motion[dof] = waveHeight / 2 * modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, dofIndex]
     dofIndex += 1
 
 animation = hullBody.animate(motion = motion, loop_duration = 1)
+free_surface = cpt.FreeSurface(x_range=(-5, 5), y_range=(-5, 5), nx=150, ny=150)
+animation.add_free_surface(free_surface, faces_elevation = waveHeight / 2 * airy_waves_free_surface_elevation(free_surface.mesh, diffractionProblem))
 animation.run()

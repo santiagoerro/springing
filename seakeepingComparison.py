@@ -124,7 +124,7 @@ for i in range(6):
     radiationResults[i] = cpt.BEMSolver().solve(radiationProblem, keep_details = True)
 
 # coupling of hydrodynamics and rigid body, seakeeping results
-forcesFromAmplitudesMatrices: xr.DataArray = - (hydrodynamicSeakeepingResults.added_mass + massMatrix) * hydrodynamicSeakeepingResults.omega**2 + complex(0,1) * hydrodynamicSeakeepingResults.omega * hydrodynamicSeakeepingResults.radiation_damping + hydrostaticStiffness
+forcesFromAmplitudesMatrices: xr.DataArray = - (hydrodynamicSeakeepingResults.added_mass + massMatrix) * hydrodynamicSeakeepingResults.omega**2 - complex(0,1) * hydrodynamicSeakeepingResults.omega * hydrodynamicSeakeepingResults.radiation_damping + hydrostaticStiffness
 
 amplitudesFromForcesMatrices = xr.DataArray(la.inv(forcesFromAmplitudesMatrices), dims = ['omega', 'influenced_dof', 'radiating_dof'])
 
