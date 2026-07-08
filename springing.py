@@ -1559,6 +1559,52 @@ class ModalProperSpringingResults:
 
 
 
+# class ModalProperSpringingResultsForwardSpeed:
+#     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset, omegas: np.ndarray, speeds: np.ndarray):
+#         numberOmegas = omegas.size
+#         numberSpeeds = speeds.size
+#         if not modalHydrodynamicResults.omega.size == numberOmegas * (1 + numberSpeeds):
+#             sys.exit('The number of frequencies analized must be equal to the number of wave frequencies times the number of boat speeds.')
+#         numberRadiatingDofs = modalHydrodynamicResults.added_mass.sizes['radiating_dof']
+#         numberInfluencedDofs = dryNaturalFrequenciesSquared.size
+
+#         massMatrix = np.eye(numberInfluencedDofs)
+#         self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
+#         stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
+#         self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
+
+#         addedMassMatrix = np.zeros([numberOmegas, numberSpeeds, numberInfluencedDofs, numberInfluencedDofs])
+#         for i in range(numberSpeeds):
+#             addedMassMatrix[:, i, :numberRadiatingDofs, :] = modalHydrodynamicResults.added_mass.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, :]
+#             addedMassMatrix[:, i, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.added_mass.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, numberRadiatingDofs:], [0, 2, 1])
+#         self.addedMass = xr.DataArray(addedMassMatrix, dims = ['omega', 'speed', 'radiating_dof', 'influenced_dof'])
+
+#         radiationDampingMatrix = np.zeros([numberOmegas, numberSpeeds, numberInfluencedDofs, numberInfluencedDofs])
+#         for i in range(numberSpeeds):
+#             radiationDampingMatrix[:, i, :numberRadiatingDofs, :] = modalHydrodynamicResults.radiation_damping.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, :]
+#             radiationDampingMatrix[:, i, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.radiation_damping.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, numberRadiatingDofs:], [0, 2, 1])
+#         self.radiationDamping = xr.DataArray(radiationDampingMatrix, dims = ['omega', 'speed', 'radiating_dof', 'influenced_dof'])
+
+#         excitationForcesMatrix = modalHydrodynamicResults.excitation_force.values[0 : numberOmegas, :, :]
+#         self.excitationForces = xr.DataArray(excitationForcesMatrix, dims = ['omega', 'wave_directions', 'influenced_dof'])
+
+#         encounterOmegasMatrix = np.zeros([numberOmegas, numberSpeeds])
+#         for i in range(numberSpeeds):
+#             encounterOmegasMatrix[:, i] = modalHydrodynamicResults.omega[numberOmegas * (i + 1) : numberOmegas * (i + 2)]
+#         self.encounterOmegas = xr.DataArray(encounterOmegasMatrix, dims = ['omega', 'speed'])
+
+#         self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (self.addedMass + self.massMatrix) * self.encounterOmegas**2 - complex(0,1) * self.encounterOmegas * self.radiationDamping + (self.stiffnessMatrix + modalHydrostaticStiffness)
+
+#         self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'speed', 'influenced_dof', 'radiating_dof'])
+
+#         self.modalAmplitudes: xr.DataArray = xr.dot(self.excitationForces, self.modalAmplitudesFromForcesMatrices, dims = ['influenced_dof'])
+#         self.modalAmplitudes = self.modalAmplitudes.rename({'radiating_dof': 'dof'})
+
+#         self.hydrostaticStiffness = modalHydrostaticStiffness
+#         self.hydrodynamicResults = modalHydrodynamicResults
+
+
+
 def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float, gravity: float):
     numberDofs = len(hullBody.dofs)
     dofNames = list(hullBody.dofs.keys())
