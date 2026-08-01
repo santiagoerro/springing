@@ -1573,7 +1573,7 @@ def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float,
     return hydrostaticStiffnessDataArray
 
 
-def ComputeHydrostaticStiffnessNewMethod(hullBody: cpt.FloatingBody, vertexDofs: dict, dofJacobians: dict, waterDensity: float, gravity: float):
+def ComputeHydrostaticStiffnessNewMethod(hullBody: cpt.FloatingBody, vertexDofs: dict, waterDensity: float, gravity: float):
     numberDofs = len(hullBody.dofs)
     dofNames = list(hullBody.dofs.keys())
 
@@ -1584,7 +1584,7 @@ def ComputeHydrostaticStiffnessNewMethod(hullBody: cpt.FloatingBody, vertexDofs:
         dofiVertexDisplacements = vertexDofs[dofNames[i]]
         for j in range(numberDofs):
             dofj = hullBody.dofs[dofNames[j]]
-            dofjJacobians = dofJacobians[dofNames[j]]
+            # dofjJacobians = dofJacobians[dofNames[j]]
 
             vertexCoords = hullBody.mesh.vertices[hullBody.mesh.faces, :]
             vertexDisplacementsDofi = dofiVertexDisplacements[hullBody.mesh.faces, :]
@@ -1595,11 +1595,11 @@ def ComputeHydrostaticStiffnessNewMethod(hullBody: cpt.FloatingBody, vertexDofs:
             normalsTimesAreasDeviationDofi += 0.5 * np.cross(vertexDisplacementsDofi[:, 3, :] - vertexDisplacementsDofi[:, 2, :], vertexCoords[:, 0, :] - vertexCoords[:, 3, :])
             normalsTimesAreasDeviationDofi += 0.5 * np.cross(vertexCoords[:, 3, :] - vertexCoords[:, 2, :], vertexDisplacementsDofi[:, 0, :] - vertexDisplacementsDofi[:, 3, :])
 
-            dofjDeviationFromDofi = np.matvec(dofjJacobians, dofi)
+            # dofjDeviationFromDofi = np.matvec(dofjJacobians, dofi)
 
             hydrostaticStiffness[j, i] = np.sum(hullBody.dof_normals(dofj) * dofi[:, 2] * hullBody.mesh.faces_areas)
             hydrostaticStiffness[j, i] += np.sum(hullBody.mesh.faces_centers[:, 2] * np.sum(normalsTimesAreasDeviationDofi * dofj, axis = 1))
-            hydrostaticStiffness[j, i] += np.sum(hullBody.mesh.faces_centers[:, 2] * hullBody.dof_normals(dofjDeviationFromDofi) * hullBody.mesh.faces_areas)
+            # hydrostaticStiffness[j, i] += np.sum(hullBody.mesh.faces_centers[:, 2] * hullBody.dof_normals(dofjDeviationFromDofi) * hullBody.mesh.faces_areas)
 
     hydrostaticStiffnessDataArray = xr.DataArray(-waterDensity * gravity * hydrostaticStiffness, dims = ['influenced_dof', 'radiating_dof'])
 

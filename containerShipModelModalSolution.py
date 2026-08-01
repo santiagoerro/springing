@@ -135,7 +135,15 @@ testMatrix = xr.Dataset(coords={
 })
 
 # hydrostatic stiffness calculation
-hydrostaticStiffness = spr.ComputeHydrostaticStiffness(hullBody, waterDensity, gravity)
+vertexDofs = {}
+i = 0
+for dofName in modalDofs.keys():
+    displacements = np.zeros([7 * (beamSegments + 1)])
+    vertexDofs[dofName] = beam.DisplacementField(hullMesh.vertices.transpose(), dryVibrationModesNormalized[:, i]).transpose()
+    i = i + 1
+
+hydrostaticStiffness = spr.ComputeHydrostaticStiffnessNewMethod(hullBody, vertexDofs, waterDensity, gravity)
+# hydrostaticStiffness = spr.ComputeHydrostaticStiffness(hullBody, waterDensity, gravity)
 
 # hydrodynamic calculation: added mass, radiation, forcing
 hydrodynamicResults = cpt.BEMSolver().fill_dataset(testMatrix, hullBody)
