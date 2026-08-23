@@ -41,7 +41,7 @@ numberModes = 10
 
 # CALCULATIONS
 # beam definition without bending-torsion coupling
-shearModulus = youngsModulus / (2 * (1 + 0.26))
+shearModulus = youngsModulus / (2 * (1 + poissonRatio))
 
 verticalTimoshenkoCoef = 3 * youngsModulus * verticalAreaMoment / (vertical3EIOverKappaLSquaredAG * sectionArea * shearModulus * beamLength**2)
 horizontalTimoshenkoCoef = 3 * youngsModulus * horizontalAreaMoment / (horizontal3EIOverKappaLSquaredAG * sectionArea * shearModulus * beamLength**2)
@@ -93,10 +93,12 @@ dryNaturalFrequencies = np.sqrt(dryNaturalFrequenciesSquared)
 # mode classification
 axialDryNaturalFrequencies = np.zeros([numberModes])
 verticalBendingDryNaturalFrequencies = np.zeros([numberModes])
+horizontalBendingDryNaturalFrequencies = np.zeros([numberModes])
 torsionDryNaturalFrequencies = np.zeros([numberModes])
 
 axialCounter = 0
 verticalBendingCounter = 0
+horizontalBendingCounter = 0
 torsionCounter = 0
 
 for i in range(6, 7 * (beamSegments + 1)):
@@ -106,6 +108,9 @@ for i in range(6, 7 * (beamSegments + 1)):
     elif np.abs(dryVibrationModesNormalized[2, i]) > 0.1 and verticalBendingCounter < 10:
         verticalBendingDryNaturalFrequencies[verticalBendingCounter] = dryNaturalFrequencies[i]
         verticalBendingCounter = verticalBendingCounter + 1
+    elif np.abs(dryVibrationModesNormalized[1, i]) > 0.1 and horizontalBendingCounter < 10:
+        horizontalBendingDryNaturalFrequencies[horizontalBendingCounter] = dryNaturalFrequencies[i]
+        horizontalBendingCounter = horizontalBendingCounter + 1
     elif np.abs(dryVibrationModesNormalized[3, i]) > 0.1 and torsionCounter < 10:
         torsionDryNaturalFrequencies[torsionCounter] = dryNaturalFrequencies[i]
         torsionCounter = torsionCounter + 1
@@ -122,6 +127,7 @@ for i in range(numberModes):
     betaSolutions[i] = fsolve(Equation, seed)[0]
 
 verticalBendingDryNaturalFrequenciesBernoulliAnalytic = betaSolutions**2 / beamLength**2 * np.sqrt(youngsModulus * verticalAreaMoments[0] / linearDensities[0])
+horizontalBendingDryNaturalFrequenciesBernoulliAnalytic = betaSolutions**2 / beamLength**2 * np.sqrt(youngsModulus * horizontalAreaMoments[0] / linearDensities[0])
 
 torsionalDryNaturalFrequenciesNoWarpingAnalytic = np.arange(1, numberModes + 1) * np.pi / beamLength * np.sqrt(shearModulus * torsionConstants[0] / rollInertias[0])
 
@@ -182,8 +188,8 @@ def BendingTorsionODEFunction(x: np.ndarray, y: np.ndarray, p: np.ndarray):
     hPrime = y[1, :]
     hDoublePrime = y[2, :]
     hTriplePrime = y[3, :]
-    a = y[4, :]
-    aPrime = y[5, :]
+    alpha = y[4, :]
+    alphaPrime = y[5, :]
 
     omegaSquared = p[0]
 
@@ -191,9 +197,9 @@ def BendingTorsionODEFunction(x: np.ndarray, y: np.ndarray, p: np.ndarray):
     yPrime[0, :] = hPrime
     yPrime[1, :] = hDoublePrime
     yPrime[2, :] = hTriplePrime
-    yPrime[3, :] = omegaSquared * linearDensity / (youngsModulus * horizontalAreaMoment) * (h - axesOffset * a)
-    yPrime[4, :] = aPrime
-    yPrime[5, :] = omegaSquared / (shearModulus * torsionConstant) * (axesOffset * linearDensity * h - (axesOffset**2 * linearDensity + rollInertia) * a)
+    yPrime[3, :] = omegaSquared * linearDensity / (youngsModulus * horizontalAreaMoment) * (h - axesOffset * alpha)
+    yPrime[4, :] = alphaPrime
+    yPrime[5, :] = omegaSquared / (shearModulus * torsionConstant) * (axesOffset * linearDensity * h - (axesOffset**2 * linearDensity + rollInertia) * alpha)
 
     return yPrime
 
@@ -243,6 +249,11 @@ print('Dry vertical bending natural frequencies (rad/s)')
 print('Nodes     Numerical     Analytic Bernoulli beam')
 for i in range(numberModes):
     print('%2d        %6.2f        %6.2f'%(i + 2, verticalBendingDryNaturalFrequencies[i], verticalBendingDryNaturalFrequenciesBernoulliAnalytic[i]))
+print()
+print('Dry horizontal bending natural frequencies (rad/s)')
+print('Nodes     Numerical     Analytic Bernoulli beam')
+for i in range(numberModes):
+    print('%2d        %6.2f        %6.2f'%(i + 2, horizontalBendingDryNaturalFrequencies[i], horizontalBendingDryNaturalFrequenciesBernoulliAnalytic[i]))
 print()
 print('Dry decoupled torsion natural frequencies (rad/s)')
 print('Nodes     Numerical     Analytic no warping')

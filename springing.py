@@ -11,6 +11,7 @@ class Beam:
     """
     Class used to define the beam that determines the deformations of the mesh and the structural behavior of the problem.
     """
+
     def __init__(self, beamDefinition: dict):
         """
         Instantiates a Beam variable according to the definition provided. The beam is assumed to have a straight neutral axis and
@@ -18,42 +19,50 @@ class Beam:
         must be such that the z = 0 plane corresponds to the free surface of the water.
 
         :type beamDefinition: dict
-        :param beamDefinition: Dictionary defining the beam properties, which must contain the values indexed by the following keys. Throughout, let `n` denote the number of FEM segments the beam is divided into.
+        :param beamDefinition: Dictionary defining the beam properties, which must contain the values indexed by the following keys.
+            Throughout, let `n` denote the number of FEM segments the beam is divided into.
 
             - `'nodeXPositions'`: `(n+1,)-numpy.ndarray` containing the x positions, in m, of the nodes that define the FEM mesh of
-            the beam. It must contain at least two nodes, and all x values must be in strictly increasing order. The `i`-th segment
-            is located between the `i` and `i+1` nodes.
+                the beam. It must contain at least two nodes, and all x values must be in strictly increasing order. The `i`-th segment
+                is located between the `i` and `i+1` nodes.
             - `'crossSectionAreas'`: `(n,)-numpy.ndarray`, `i`-th component: structural cross sectional area of the `i`-th segment,
-            in m^2.
+                in m^2.
             - `'verticalAreaMoments'`: `(n,)-numpy.ndarray`, `i`-th component: vertical second moment of area of the structural
-            cross section of the `i`-th segment, in m^4.
+                cross section of the `i`-th segment, in m^4.
             - `'horizontalAreaMoments'`: `(n,)-numpy.ndarray`, `i`-th component: horizontal second moment of area of the structural
-            cross section of the `i`-th segment, in m^4.
+                cross section of the `i`-th segment, in m^4.
             - `'verticalTimoshenkoCoefs'`: `(n,)-numpy.ndarray`, `i`-th component: vertical bending Timoshenko shear coefficient of
-            the structural cross section of the `i`-th segment.
+                the structural cross section of the `i`-th segment.
             - `'horizontalTimoshenkoCoefs'`: `(n,)-numpy.ndarray`, `i`-th component: horizontal bending Timoshenko shear coefficient
-            of the structural cross section of the `i`-th segment.
+                of the structural cross section of the `i`-th segment.
             - `'torsionConstants'`: `(n,)-numpy.ndarray`, `i`-th component: torsion constant of the structural cross section of the
-            `i`-th segment, in m^4.
+                `i`-th segment, in m^4.
             - `'warpingConstants'`: `(n,)-numpy.ndarray`, `i`-th component: warping constant of the structural cross section of the
-            `i`-th segment, in m^6.
+                `i`-th segment, in m^6.
             - `'youngsModulus'`: `float`, the structural material's Young's modulus, in Pa.
             - `'shearModulus'`: `float`, the structural material's shear modulus, in Pa.
             - `'zNeutralAxis'`: `float`, the vertical position of the beam's neutral axis over the water's free surface, in m.
             - `'zTwistCenter'`: `float`, the vertical position of the beam's center of twist over the water's free surface, in m.
-            - `'massMatrix'`: `(6*(n+1),6*(n+1))-numpy.ndarray` optional, FEM structural mass matrix of the beam, in SI units. To be provided
-            if the user wishes to input it manually. Otherwise, `'linearDensities'`, `'zCentersOfMass'` and `'rollInertias'` must
-            be provided.
+            - `'massMatrix'`: `(7*(n+1),7*(n+1))-numpy.ndarray` optional, FEM structural mass matrix of the beam, in SI units. To be
+                provided if the user wishes to input it manually. Otherwise, `'linearDensities'`, `'zCentersOfMass'` and `'rollInertias'`
+                must be provided.
             - `'linearDensities'`: `(n,)-numpy.ndarray` optional, `i`-th component: linear mass density of the `i`-th segment, in
-            kg/m. Must be provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
+                kg/m. Must be provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
             - `'zCentersOfMass'`: `(n,)-numpy.ndarray` optional, `i`-th component: vertical position over the free surface of the
-            center of mass of cross-sections on the `i`-th segment of the beam, in m. Must be provided if the FEM structural mass
-            matrix is not manually given by the user in `'massMatrix'`.
-            - `'rollInertias'`: `(n,)-numpy.ndarray` optional, `i`-th component: mass moment of inertia of the sections in the
-            `i`-th segment around an axis parallel to the x-axis that passses through their center of mass, in kg m2 / m. Must be
-            provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
-            - `'stiffnessMatrix'`: `(6*(n+1),6*(n+1))-numpy.ndarray` optional, FEM stiffness matrix of the beam, in SI units. To be provided
-            if the user wishes to input it manually. If it is not provided, it will be calculated from the beam's structural properties.
+                center of mass of the `i`-th segment, in m. Must be provided if the FEM structural mass matrix is not manually given
+                by the user in `'massMatrix'`.
+            - `'rollInertias'`: `(n,)-numpy.ndarray` optional, `i`-th component: mass moment of inertia per unit length of the
+                `i`-th segment around an axis parallel to the x-axis that passses through its center of mass, in kg m^2 / m. Must be
+                provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
+            - `'pointMasses'`: `(m,)-numpy.ndarray` optional, `i`-th component: mass, in kg, of the `i`-th point mass. When provided,
+                their contributions will be added to the calculation of the mass matrix. Must be provided together with
+                `'pointMassPositions'`.
+            - `'pointMassPositions'`: `(m,3)-numpy.ndarray` optional, the triple given by the slice `[i, :]` corresponds to the
+                coordinates, in m, of the `i`-th point mass. When provided, these point mass contributions will be added to the
+                calculation of the mass matrix. Must be provided together with `'pointMasses'`.
+            - `'stiffnessMatrix'`: `(7*(n+1),7*(n+1))-numpy.ndarray` optional, FEM stiffness matrix of the beam, in SI units. To be
+                provided if the user wishes to input it manually. If it is not provided, it will be calculated from the beam's
+                structural properties.
         """
 
         self.nodeXPositions = beamDefinition['nodeXPositions']
@@ -164,7 +173,7 @@ class Beam:
             self.boundedBasisCoefsForStableBasisW1[segment, :] = np.array([c11w1, c12w1, c13w1, c14w1])
 
 
-        matrixShape = (6 * self.numberNodes, 6 * self.numberNodes)
+        matrixShape = (7 * self.numberNodes, 7 * self.numberNodes)
 
         if 'massMatrix' in beamDefinition:
             self.massMatrix = GetArrayCheck(beamDefinition, 'massMatrix', matrixShape)
@@ -197,20 +206,23 @@ class Beam:
 
     def UniformlyDistributedMassMatrix(self, linearDensities: np.ndarray, zCentersOfMass: np.ndarray, rollInertias: np.ndarray, pointMasses: np.ndarray = np.array([]), pointMassPositions: np.ndarray = np.array([])):
         """
-        Creates a mass matrix for the Finite Elements Method, assuming linearly uniformly distributed
-        mass within each segment. Throughout, `n` corresponds to the beam's number of nodes.
+        Computes the beam's Finite Elements Method mass matrix, assuming linearly uniformly distributed mass within each segment,
+        and accounting for roll mass moments of inertia but ignoring pitch and roll inertias. Throughout, `n` corresponds to the
+        beam's number of segments.
 
-        :param linearDensities: Array. `i`-th component: linear mass density of the `i`-th segment of the beam, in kg/m.
-        :type linearDensities: (n-1,)-numpy.ndarray
+        :type linearDensities: (n,)-numpy.ndarray
+        :param linearDensities: Array, `i`-th component: linear mass density of the `i`-th segment of the beam, in kg/m.
 
-        :param zCentersOfMass: Array. `i`-th component: vertical position over the free surface of the center of mass of cross-sections on the `i`-th segment of the beam, in m.
-        :type zCentersOfMass: (n-1,)-numpy.ndarray
+        :type zCentersOfMass: (n,)-numpy.ndarray
+        :param zCentersOfMass: Array, `i`-th component: vertical position over the free surface of the center of mass of
+            the `i`-th segment, in m.
 
-        :param rollInertias: Array. `i`-th component: mass moment of inertia of the sections in the `i`-th segment around an axis parallel to the x-axis that passses through their center of mass, in kg m2 / m.
-        :type rollInertias: (n-1,)-numpy.ndarray
+        :type rollInertias: (n,)-numpy.ndarray
+        :param rollInertias: Array, `i`-th component: mass moment of inertia per unit length of the `i`-th segment around
+            an axis parallel to the x-axis that passses through its center of mass, in kg m^2 / m.
 
+        :rtype: (7*(n+1), 7*(n+1))-numpy.ndarray
         :returns: Mass matrix for the FEM analysis.
-        :rtype: (7*n, 7*n)-numpy.ndarray
         """
 
         massMatrix = np.zeros([7 * self.numberNodes, 7 * self.numberNodes])
@@ -454,10 +466,11 @@ class Beam:
 
     def StiffnessMatrix(self):
         """
-        Calculates the beam's Finite Elements Method stiffness matrix according to Timoshenko bending and Vlasov thin-walled torsion beam theory. `n` corresponds to the beam's number of nodes.
+        Calculates the beam's Finite Elements Method stiffness matrix according to Timoshenko bending and Vlasov thin-walled torsion
+        beam theory. `n` corresponds to the beam's number of segments.
 
+        :rtype: (7*(n+1), 7*(n+1))-numpy.ndarray
         :returns: Beam's FEM stiffness matrix.
-        :rtype: (7*n, 7*n)-numpy.ndarray
         """
 
         stiffnessMatrix = np.zeros([7 * self.numberNodes, 7 * self.numberNodes])
@@ -584,6 +597,35 @@ class Beam:
 
 
     def SegmentDisplacementFunction(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, function: str):
+        """
+        Evaluates one of the beam-theoretic displacement functions at one or more points within a beam segment, given their x
+        coordinates within the segment and the displacements of the nodes around it.
+
+        :type xSegment: float or (m,)-numpy.ndarray
+        :param xSegment: Value or array of values of the x coordinate within the beam segment, in m, of the point or points at
+            which the displacement function is to be evaluated.
+
+        :type segmentDisplacements: (14,)-numpy.ndarray
+        :param segmentDisplacements: Array of nodal displacements, in m and rad, of the beam nodes before and after the beam 
+            segment at which the displacement function is to be computed.
+
+        :type segmentIndex: int
+        :param segmentIndex: Index identifying the segment at which the provided points are located.
+
+        :type function: str
+        :param function: String identifying the displacement function which is to be evaluated.
+
+            - `'a'`: Axial displacement.
+            - `'v'`: Vertical deflection.
+            - `'p'`: Pitch rotation.
+            - `'h'`: Horizontal deflection.
+            - `'q'`: Yaw rotation.
+            - `'t'`: Twisted angle.
+
+        :rtype: float or (m,)-numpy.ndarray
+        :returns: Value or array of values of the displacement function at the point or points indicated by `xSegment`, in m or rad.
+        """
+
         if function == 'a':
             x0 = segmentDisplacements[0]
             x1 = segmentDisplacements[7]
@@ -727,12 +769,37 @@ class Beam:
             return twistPhi0 * phi0 + twistW0Assembly * w0 + twistPhi1 * phi1 + twistW1Assembly * w1
 
         else:
-            sys.exit('TODO: function must be one of [etc].')
+            sys.exit('Unsupported value for function, which must be one of a, v, p, h, q, t.')
 
 
     def DisplacementFunction(self, x: float | np.ndarray, displacements: np.ndarray, function: str):
+        """
+        Evaluates one of the beam-theoretic displacement functions at one or more points, given their x coordinates within the beam
+        and the full vector of nodal displacements. Throughout, `n` corresponds to the beam's number of segments.
+
+        :type x: float or (m,)-numpy.ndarray
+        :param x: Value or array of values of the x coordinate within the beam, in m, of the point or points at which the
+            displacement function is to be evaluated.
+
+        :type displacements: (7*(n+1),)-numpy.ndarray
+        :param displacements: Array of nodal displacements, in m and rad, of all of the beam nodes.
+
+        :type function: str
+        :param function: String identifying the displacement function which is to be evaluated.
+
+            - `'a'`: Axial displacement.
+            - `'v'`: Vertical deflection.
+            - `'p'`: Pitch rotation.
+            - `'h'`: Horizontal deflection.
+            - `'q'`: Yaw rotation.
+            - `'t'`: Twisted angle.
+
+        :rtype: float or (m,)-numpy.ndarray
+        :returns: Value or array of values of the displacement function at the point or points indicated by `x`, in m or rad.
+        """
+
         if not function in ['a', 'v', 'p', 'h', 'q', 't']:
-            sys.exit('TODO: function must be one of [etc].')
+            sys.exit('Unsupported value for function, which must be one of a, v, p, h, q, t.')
 
         if not self.numberNodes * 7 == displacements.size:
             sys.exit('Wrong size of displacements vector')
@@ -778,11 +845,27 @@ class Beam:
                 displacementFunction[mask] = self.SegmentDisplacementFunction(coordinatesSegment, segmentDisplacements, i, function)
 
         return displacementFunction
-    
+
 
     def DisplacementField(self, points: np.ndarray, displacements: np.ndarray):
+        """
+        Computes the beam-theoretic displacement field at one or more points, given their coordinates in 3D space and the full
+        vector of nodal displacements. Throughout, `n` corresponds to the beam's number of segments.
+
+        :type points: (3,) or (3,m)-numpy.ndarray
+        :param points: Coordinates of the point or points at which the displacement field is to be evaluated, in m. The first index
+            identifies the x, y or z coordinate, while the second, if present, labels each of the requested points.
+
+        :type displacements: (7*(n+1),)-numpy.ndarray
+        :param displacements: Array of nodal displacements, in m and rad, of all of the beam nodes.
+
+        :rtype: (3,) or (3,m)-numpy.ndarray
+        :return: Array containing the vector of displacements, or sequence of vectors of displacements, corresponding to the point
+            or points requested.
+        """
+
         if not points.shape[0] == 3:
-            sys.exit('The points where the displacement field is to be evaluated must be provided as a (3,) or (3,n)-np.ndarray, for any number n of points to evaluate.')
+            sys.exit('The points where the displacement field is to be evaluated must be provided as a (3,) or (3,m)-np.ndarray, for any number m of points to evaluate.')
         
         x = points[0]
         y = points[1]
@@ -806,33 +889,36 @@ class Beam:
 
     def SegmentInternalForce(self, xSegment: float | np.ndarray, segmentDisplacements: np.ndarray, segmentIndex: int, force: str):
         """
-        TODO: Update.
-        Calculates the vertical or horizontal bending moments at a one or more points within a beam segment
-        given their x coordinates within the segment and the displacements of the nodes around it.
+        Calculates one of the internal forces and moments at one or more points within a beam segment, given their x coordinates
+        within the segment and the displacements of the nodes around it.
 
-        :param xSegment: Value or array of values of the x coordinate within the beam segment, in meters, of
-            the point or points at which the bending moment is to be calculated.
         :type xSegment: float or (m,)-numpy.ndarray
+        :param xSegment: Value or array of values of the x coordinate within the beam segment, in m, of the point or points at
+            which the internal force is to be calculated.
 
-        :param segmentDisplacements: Array of displacements, in meters and radians, of the beam nodes before
-            and after the beam segment at which the bending moment is to be calculated.
-        :type segmentDisplacements: (12,)-numpy.ndarray
+        :type segmentDisplacements: (14,)-numpy.ndarray
+        :param segmentDisplacements: Array of nodal displacements, in m and rad, of the beam nodes before and after the beam 
+            segment at which the internal force is to be calculated.
 
-        :param areaMoment: Vertical or horizontal geometric area moment of the beam section of the segment of interest,
-            in m^4.
-        :type areaMoment: float
+        :type segmentIndex: int
+        :param segmentIndex: Index identifying the segment at which the provided points are located.
 
-        :param shearCorrection: Vertical or horizontal shear correction of the segment of interest.
-        :type shearCorrection: float
+        :type force: str
+        :param force: String identifying the internal force which is to be calculated.
 
-        :param plane: String identifying if the vertical, `'v'`, or horizontal, `'h'`, bending moment is to
-            be calculated.
-        :type plane: str
+            - `'a'`: Axial force.
+            - `'sv'`: Vertical shear force.
+            - `'mv'`: Vertical bending moment.
+            - `'sh'`: Horizontal shear force.
+            - `'mh'`: Horizontal bending moment.
+            - `'t'`: Torsion moment.
+            - `'tf'`: Warping-free component of the torsion moment.
+            - `'tw'`: Warping component of the torsion moment.
 
-        :returns: Value or array of values of the vertical or horizontal bending moment at the point or points
-            indicated by `xSegment`, in Nm.
         :rtype: float or (m,)-numpy.ndarray
+        :returns: Value or array of values of the internal force at the point or points indicated by `xSegment`, in N or Nm.
         """
+
         segmentLength = self.segmentLengths[segmentIndex]
 
         if type(xSegment) == np.ndarray:
@@ -973,36 +1059,42 @@ class Beam:
             return torsionMomentValue
 
         else:
-            sys.exit('TODO: force must be one of [etc].')
+            sys.exit('Unsupported value for force, which must be one of a, mv, sv, mh, sh, t, tf, tw.')
 
 
     def InternalForce(self, x: float | np.ndarray, displacements: np.ndarray, force: str):
         """
-        TODO: Update.
-        Calculates the vertical or horizontal bending moments at a one or more points within the beam
-        given their x coordinates within the beam and the full vector of vertex displacements. Throughout,
-        n corresponds to the beam's number of nodes.
+        Calculates one of the internal forces and moments at one or more points, given their x coordinates within the beam and
+        the full vector of nodal displacements. Throughout, `n` corresponds to the beam's number of segments.
 
-        :param x: Value or array of values of the x coordinate within the beam, in meters, of the point
-            or points at which the bending moment is to be calculated.
         :type x: float or (m,)-numpy.ndarray
+        :param x: Value or array of values of the x coordinate within the beam, in m, of the point or points at which the internal
+            force is to be calculated.
 
-        :param displacements: Array of displacements, in meters and radians, of all of the beam nodes.
-        :type displacements: (6*n,)-numpy.ndarray
+        :type displacements: (7*(n+1),)-numpy.ndarray
+        :param displacements: Array of nodal displacements, in m and rad, of all of the beam nodes.
 
-        :param plane: String identifying if the vertical, `'v'`, or horizontal, `'h'`, bending moment is to
-            be calculated.
-        :type plane: str, optional. Default: `'v'`.
+        :type force: str
+        :param force: String identifying the internal force which is to be calculated.
 
-        :returns: Value or array of values of the vertical or horizontal bending moment at the point or points
-            indicated by `x`, in Nm.
+            - `'a'`: Axial force.
+            - `'sv'`: Vertical shear force.
+            - `'mv'`: Vertical bending moment.
+            - `'sh'`: Horizontal shear force.
+            - `'mh'`: Horizontal bending moment.
+            - `'t'`: Torsion moment.
+            - `'tf'`: Warping-free component of the torsion moment.
+            - `'tw'`: Warping component of the torsion moment.
+
         :rtype: float or (m,)-numpy.ndarray
+        :returns: Value or array of values of the internal force at the point or points indicated by `x`, in N or Nm.
         """
+
         if not force in ['a', 'mv', 'sv', 'mh', 'sh', 't', 'tf', 'tw']:
-            sys.exit('TODO: force must be one of [etc].')
+            sys.exit('Unsupported value for force, which must be one of a, mv, sv, mh, sh, t, tf, tw.')
 
         if not self.numberNodes * 7 == displacements.size:
-            sys.exit('Wrong size of displacements vector')
+            sys.exit('Wrong size of displacements vector.')
 
         nodeXPositionsStartingAtZero = self.nodeXPositions - self.nodeXPositions[0]
         beamLength = nodeXPositionsStartingAtZero[-1]
@@ -1045,38 +1137,30 @@ class Beam:
 
     def CalculateNodalDOFs(self, hullMesh : cpt.Mesh):
         """
-        Creates the degrees of freedom corresponding to the object's mesh and beam.
+        Calculates the nodal degrees of freedom that the beam induces on the provided mesh.
 
-        This function takes the object's mesh and beam and creates Capytaine degrees of freedom.
-        To each beam vertex, six degrees of freedom are associated: three linear and three angular,
-        according to the right-hand rule sign convention. The degrees of freedom corresponding to
-        the `i`-th vertex are labeled by the following strings.
+        This function takes a Capytaine mesh and and returns the Capytaine nodal degrees of freedom that the beam induces on it.
+        To each beam vertex, seven degrees of freedom are associated: three linear, three angular and warping. The degrees of
+        freedom corresponding to the `i`-th vertex are labeled by the following strings.
 
-        Surge `'x%d'%i`
-        
-        Sway `'y%d'%i`
-        
-        Heave `'z%d'%i`
-        
-        Roll `'roll%d'%i`
-        
-        Pitch `'pitch%d'%i`
-        
-        Yaw `'yaw%d'%i`
+        - Surge `'x%d'%i`
+        - Sway `'y%d'%i`
+        - Heave `'z%d'%i`
+        - Roll `'roll%d'%i`
+        - Warping `'warping%d'%i`
+        - Pitch `'pitch%d'%i`
+        - Yaw `'yaw%d'%i`
 
-        The beam's neutral axis is deformed between nodes according to the FEM interpolation
-        polynomials for beam theory. That is, cubic for bending, linear for axial and torsional.
-        This extends to a deformation of the whole mesh under the assumption that sections remain
-        perpendicular to the neutral axis. The field of displacements is linearized, as required by
-        hydrodynamic panel code formulations. The mesh regions before the first and after the last
-        beam nodes are deformed as rigid bodies fixed to the endpoint vertex.
+        For each degree of freedom, the mesh is deformed according to the displacement fields of beam theory. In particular axial
+        deformation, Timoshenko bending and Vlasov thin-walled torsion.
 
         :type hullMesh: capytaine.Mesh
-        :param hullMesh: Mesh of the ship's hull, positioned in the same coordinate system as the beam. In particular, the hull must be located in such a way that hull girder's neutral axis and center of
-        twist are parallel to the x-axis and contained in the xz-plane. The z = 0 plane must coincide with the water's free surface.
+        :param hullMesh: Mesh of the ship's hull, positioned in the same coordinate system as the beam. In particular, the hull
+            must be located in such a way that the hull girder's neutral axis and center of twist are parallel to the x-axis and
+            contained in the xz-plane. The z = 0 plane must coincide with the water's free surface.
 
         :rtype: dict
-        :returns: A dictionary containing the degrees of freedom, ready for input to Capytaine.
+        :returns: A dictionary containing the floating body's nodal degrees of freedom, ready for input to Capytaine.
         """
 
         self.segmentOfFace = np.searchsorted(self.nodeXPositions, hullMesh.faces_centers[:, 0])-1
@@ -1263,6 +1347,27 @@ class Beam:
 
 
     def CalculateModes(self, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+        """
+        Calculates the natural frequencies and vibrational modes of the beam. `n` denotes the beam's number of segments.
+
+        :type numberModes: int
+        :param numberModes: Number of modes which are to be computed, starting with the rigid body modes and including more in
+            order of increasing natural frequency. The rigid body modes are ordered as surge, sway, heave, roll, pitch and yaw.
+
+        :type rigidBodyModesFrequencySquaredTolerance: float, default `1e-3`
+        :param rigidBodyModesFrequencySquaredTolerance: Factor by which the numerical results for the rigid-body natural frequencies
+            must be smaller than the first flexible natural frequency. If the computed values for the rigid-body natural frequencies
+            are bigger, an error message is returned.
+
+        :rtype: tuple of two numpy.ndarrays
+        :returns:
+
+            - `(numberModes,)-numpy.ndarray` containing the beam's natural frequencies squared in ascending order, in (rad/s)^2.
+
+            - `(7*(n+1),numberModes)-numpy.ndarray` whose columns contain the nodal displacements associated with the beam's
+                vibrational modes, in the same order as the retured natural frequencies squared.
+        """
+
         if numberModes < 6:
             sys.exit('numberModes must be greater than or equal to 6: at least the rigid body modes must be considered.')
 
@@ -1319,6 +1424,34 @@ class Beam:
 
 
     def CalculateModalDOFs(self, hullMesh: cpt.Mesh, numberModes: int, rigidBodyModesFrequencySquaredTolerance = 1e-3):
+        """
+        Calculates the modal degrees of freedom that the beam induces on the provided mesh.
+
+        This function takes a Capytaine mesh and and returns the Capytaine modal degrees of freedom that the beam induces on it.
+        These modal degrees of freedom are labeled `'mode%d'%i`, for `i` starting in `0`, and they are ordered by increasing
+        natural frequency. The rigid body modes are ordered as surge, sway, heave, roll, pitch and yaw.
+
+        For each degree of freedom, the mesh is deformed according to the displacement fields of beam theory. In particular axial
+        deformation, Timoshenko bending and Vlasov thin-walled torsion.
+
+        :type hullMesh: capytaine.Mesh
+        :param hullMesh: Mesh of the ship's hull, positioned in the same coordinate system as the beam. In particular, the hull
+            must be located in such a way that the hull girder's neutral axis and center of twist are parallel to the x-axis and
+            contained in the xz-plane. The z = 0 plane must coincide with the water's free surface.
+
+        :type numberModes: int
+        :param numberModes: Number of modes which are to be computed, starting with the rigid body modes and including more in
+            order of increasing natural frequency.
+
+        :type rigidBodyModesFrequencySquaredTolerance: float, default `1e-3`
+        :param rigidBodyModesFrequencySquaredTolerance: Factor by which the numerical results for the rigid-body natural frequencies
+            must be smaller than the first flexible natural frequency. If the computed values for the rigid-body natural frequencies
+            are bigger, an error message is returned.
+
+        :rtype: dict
+        :returns: A dictionary containing the floating body's modal degrees of freedom, ready for input to Capytaine.
+        """
+
         requestedDryNaturalFrequenciesSquared, requestedDryVibrationModesNormalized = self.CalculateModes(numberModes, rigidBodyModesFrequencySquaredTolerance)
 
         nodalDofs = self.CalculateNodalDOFs(hullMesh)
@@ -1344,39 +1477,41 @@ class NodalSpringingResults:
     """
     Class used to compute and store the results of the ship's springing analysis.
     """
+
     def __init__(self, massMatrix: np.ndarray, stiffnessMatrix: np.ndarray, hydrostaticStiffness: xr.DataArray, hydrodynamicResults: xr.Dataset):
         """
         Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, n corresponds to the beam's number
-        of nodes.
+        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
+        of segments.
 
+        :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
             matrix for the hull girder beam.
-        :type massMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
             Method stiffness matrix for the hull girder beam.
-        :type stiffnessMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type hydrostaticStiffness: xarray.DataArray
         :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
             defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
             the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
             freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
             of the `MeshBeamProperties` class.
-        :type hydrostaticStiffness: xarray.DataArray
 
+        :type hydrodynamicResults: xarray.Dataset
         :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
             FloatingBody defined by the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
             `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
             given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
             method.
-        :type hydrodynamicResults: xarray.Dataset
 
+        :rtype: SpringingResults
         :returns: Class object containing the following attributes.
 
-            * displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
-                of the springing motions of the beam nodes divided by wave height, in m/m and
+            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
+                of the springing motions of the beam nodes divided by wave amplitude, in m/m and
                 rad/m. The motions are sinusoidal, with the real part of the amplitude being the
                 displacement at t = 0 and the imaginary part being the displacement, with
                 opposite sign, after one fourth of the period. The array's dimensions are labeled
@@ -1386,12 +1521,12 @@ class NodalSpringingResults:
                 are determined by the test matrix passed to the Capytaine BEM Solver when calculating
                 these results. The `'dof'` dimension has a length of 6n and indexes the degree of
                 freedom each amplitude corresponds to.
-            * massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            * stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
+            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-        :rtype: SpringingResults
         """
+
         self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
         self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
 
@@ -1411,38 +1546,40 @@ class ModalSpringingResults:
     """
     Class used to compute and store the results of the ship's modal springing analysis.
     """
+
     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
         """
         Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, n corresponds to the beam's number
-        of nodes.
+        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
+        of segments.
 
+        :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
             matrix for the hull girder beam.
-        :type massMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
             Method stiffness matrix for the hull girder beam.
-        :type stiffnessMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type hydrostaticStiffness: xarray.DataArray
         :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
             defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
             the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
             freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
             of the `MeshBeamProperties` class.
-        :type hydrostaticStiffness: xarray.DataArray
 
+        :type hydrodynamicResults: xarray.Dataset
         :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
             FloatingBody defined by the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
             `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
             given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
             method.
-        :type hydrodynamicResults: xarray.Dataset
 
+        :rtype: SpringingResults
         :returns: Class object containing the following attributes.
 
-            * displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
+            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
                 of the springing motions of the beam nodes divided by wave height, in m/m and
                 rad/m. The motions are sinusoidal, with the real part of the amplitude being the
                 displacement at t = 0 and the imaginary part being the displacement, with
@@ -1453,12 +1590,12 @@ class ModalSpringingResults:
                 are determined by the test matrix passed to the Capytaine BEM Solver when calculating
                 these results. The `'dof'` dimension has a length of 6n and indexes the degree of
                 freedom each amplitude corresponds to.
-            * massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            * stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
+            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-        :rtype: SpringingResults
         """
+
         massMatrix = np.eye(dryNaturalFrequenciesSquared.size)
         self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
         stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
@@ -1480,38 +1617,40 @@ class ModalProperSpringingResults:
     """
     Class used to compute and store the results of the ship's modal springing analysis.
     """
+
     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
         """
         Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, n corresponds to the beam's number
-        of nodes.
+        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
+        of segments.
 
+        :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
             matrix for the hull girder beam.
-        :type massMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
             Method stiffness matrix for the hull girder beam.
-        :type stiffnessMatrix: (6*n,6*n)-numpy.ndarray
 
+        :type hydrostaticStiffness: xarray.DataArray
         :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
             defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
             the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
             freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
             of the `MeshBeamProperties` class.
-        :type hydrostaticStiffness: xarray.DataArray
 
+        :type hydrodynamicResults: xarray.Dataset
         :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
             FloatingBody defined by the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
             `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
             given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
             method.
-        :type hydrodynamicResults: xarray.Dataset
 
+        :rtype: SpringingResults
         :returns: Class object containing the following attributes.
 
-            * displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
+            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
                 of the springing motions of the beam nodes divided by wave height, in m/m and
                 rad/m. The motions are sinusoidal, with the real part of the amplitude being the
                 displacement at t = 0 and the imaginary part being the displacement, with
@@ -1522,12 +1661,12 @@ class ModalProperSpringingResults:
                 are determined by the test matrix passed to the Capytaine BEM Solver when calculating
                 these results. The `'dof'` dimension has a length of 6n and indexes the degree of
                 freedom each amplitude corresponds to.
-            * massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            * stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
+            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-        :rtype: SpringingResults
         """
+
         numberOmegas = modalHydrodynamicResults.omega.size
         numberRadiatingDofs = modalHydrodynamicResults.added_mass.sizes['radiating_dof']
         numberInfluencedDofs = dryNaturalFrequenciesSquared.size
@@ -1559,53 +1698,21 @@ class ModalProperSpringingResults:
 
 
 
-# class ModalProperSpringingResultsForwardSpeed:
-#     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset, omegas: np.ndarray, speeds: np.ndarray):
-#         numberOmegas = omegas.size
-#         numberSpeeds = speeds.size
-#         if not modalHydrodynamicResults.omega.size == numberOmegas * (1 + numberSpeeds):
-#             sys.exit('The number of frequencies analized must be equal to the number of wave frequencies times the number of boat speeds.')
-#         numberRadiatingDofs = modalHydrodynamicResults.added_mass.sizes['radiating_dof']
-#         numberInfluencedDofs = dryNaturalFrequenciesSquared.size
-
-#         massMatrix = np.eye(numberInfluencedDofs)
-#         self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
-#         stiffnessMatrix = np.diag(dryNaturalFrequenciesSquared)
-#         self.stiffnessMatrix = xr.DataArray(stiffnessMatrix, dims = ['influenced_dof', 'radiating_dof'])
-
-#         addedMassMatrix = np.zeros([numberOmegas, numberSpeeds, numberInfluencedDofs, numberInfluencedDofs])
-#         for i in range(numberSpeeds):
-#             addedMassMatrix[:, i, :numberRadiatingDofs, :] = modalHydrodynamicResults.added_mass.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, :]
-#             addedMassMatrix[:, i, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.added_mass.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, numberRadiatingDofs:], [0, 2, 1])
-#         self.addedMass = xr.DataArray(addedMassMatrix, dims = ['omega', 'speed', 'radiating_dof', 'influenced_dof'])
-
-#         radiationDampingMatrix = np.zeros([numberOmegas, numberSpeeds, numberInfluencedDofs, numberInfluencedDofs])
-#         for i in range(numberSpeeds):
-#             radiationDampingMatrix[:, i, :numberRadiatingDofs, :] = modalHydrodynamicResults.radiation_damping.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, :]
-#             radiationDampingMatrix[:, i, numberRadiatingDofs:, :numberRadiatingDofs] = np.transpose(modalHydrodynamicResults.radiation_damping.values[numberOmegas * (i + 1) : numberOmegas * (i + 2), :, numberRadiatingDofs:], [0, 2, 1])
-#         self.radiationDamping = xr.DataArray(radiationDampingMatrix, dims = ['omega', 'speed', 'radiating_dof', 'influenced_dof'])
-
-#         excitationForcesMatrix = modalHydrodynamicResults.excitation_force.values[0 : numberOmegas, :, :]
-#         self.excitationForces = xr.DataArray(excitationForcesMatrix, dims = ['omega', 'wave_directions', 'influenced_dof'])
-
-#         encounterOmegasMatrix = np.zeros([numberOmegas, numberSpeeds])
-#         for i in range(numberSpeeds):
-#             encounterOmegasMatrix[:, i] = modalHydrodynamicResults.omega[numberOmegas * (i + 1) : numberOmegas * (i + 2)]
-#         self.encounterOmegas = xr.DataArray(encounterOmegasMatrix, dims = ['omega', 'speed'])
-
-#         self.modalForcesFromAmplitudesMatrices: xr.DataArray = - (self.addedMass + self.massMatrix) * self.encounterOmegas**2 - complex(0,1) * self.encounterOmegas * self.radiationDamping + (self.stiffnessMatrix + modalHydrostaticStiffness)
-
-#         self.modalAmplitudesFromForcesMatrices = xr.DataArray(la.inv(self.modalForcesFromAmplitudesMatrices), dims = ['omega', 'speed', 'influenced_dof', 'radiating_dof'])
-
-#         self.modalAmplitudes: xr.DataArray = xr.dot(self.excitationForces, self.modalAmplitudesFromForcesMatrices, dims = ['influenced_dof'])
-#         self.modalAmplitudes = self.modalAmplitudes.rename({'radiating_dof': 'dof'})
-
-#         self.hydrostaticStiffness = modalHydrostaticStiffness
-#         self.hydrodynamicResults = modalHydrodynamicResults
-
-
-
 def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float, gravity: float):
+    """
+    Calculates the hydrostatic stiffness matrix associated to the provided Capytaine FloatingBody.
+
+    :type hullBody: capytaine.FloatingBody
+    :param hullBody: The Capytaine FloatingBody for which the hydrostatic stiffness matrix is to be calculated, defined according
+        to the desired degrees of freedom.
+
+    :type waterDensity: float
+    :param waterDensity: Density of the water, in kg/m^3.
+
+    :type gravity: float
+    :param gravity: Acceleration of gravity, in m/s^2.
+    """
+
     numberDofs = len(hullBody.dofs)
     dofNames = list(hullBody.dofs.keys())
 
