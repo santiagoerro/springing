@@ -911,9 +911,9 @@ class Beam:
             - `'mv'`: Vertical bending moment.
             - `'sh'`: Horizontal shear force.
             - `'mh'`: Horizontal bending moment.
-            - `'t'`: Torsion moment.
-            - `'tf'`: Warping-free component of the torsion moment.
-            - `'tw'`: Warping component of the torsion moment.
+            - `'t'`: Torsional moment.
+            - `'tf'`: Free warping component of the torsional moment.
+            - `'tw'`: Constrained warping component of the torsional moment.
 
         :rtype: float or (m,)-numpy.ndarray
         :returns: Value or array of values of the internal force at the point or points indicated by `xSegment`, in N or Nm.
@@ -1082,9 +1082,9 @@ class Beam:
             - `'mv'`: Vertical bending moment.
             - `'sh'`: Horizontal shear force.
             - `'mh'`: Horizontal bending moment.
-            - `'t'`: Torsion moment.
-            - `'tf'`: Warping-free component of the torsion moment.
-            - `'tw'`: Warping component of the torsion moment.
+            - `'t'`: Torsional moment.
+            - `'tf'`: Free warping component of the torsional moment.
+            - `'tw'`: Constrained warping component of the torsional moment.
 
         :rtype: float or (m,)-numpy.ndarray
         :returns: Value or array of values of the internal force at the point or points indicated by `x`, in N or Nm.

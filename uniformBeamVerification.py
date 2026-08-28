@@ -158,6 +158,8 @@ torsionMomentWarping = beam.InternalForce(x, nodalDisplacementsTorsion, 'tw')
 # displacement functions
 verticalDeflection = beam.DisplacementFunction(x, nodalDisplacementsBending, 'v')
 twist = beam.DisplacementFunction(x, nodalDisplacementsTorsion, 't')
+# analytic Euler-Bernoulli deflections
+analyticVerticalDeflections = -youngsModulus * verticalAreaMoment * x**2 / 2 * (beamLength - x/3)
 
 
 # beam definition with torsion-bending coupling
@@ -186,34 +188,53 @@ for i in range(6, 7 * (beamSegments + 1)):
 def BendingTorsionODEFunction(x: np.ndarray, y: np.ndarray, p: np.ndarray):
     h = y[0, :]
     hPrime = y[1, :]
-    hDoublePrime = y[2, :]
-    hTriplePrime = y[3, :]
+    theta = y[2, :]
+    thetaPrime = y[3, :]
     alpha = y[4, :]
     alphaPrime = y[5, :]
+    alphaDoublePrime = y[6, :]
+    alphaTriplePrime = y[7, :]
 
     omegaSquared = p[0]
 
     yPrime = np.zeros(y.shape)
     yPrime[0, :] = hPrime
-    yPrime[1, :] = hDoublePrime
-    yPrime[2, :] = hTriplePrime
-    yPrime[3, :] = omegaSquared * linearDensity / (youngsModulus * horizontalAreaMoment) * (h - axesOffset * alpha)
+    yPrime[1, :] = thetaPrime - omegaSquared * linearDensity / (horizontalTimoshenkoCoef * sectionArea * shearModulus) * (h - axesOffset * alpha)
+    yPrime[2, :] = thetaPrime
+    yPrime[3, :] = -horizontalTimoshenkoCoef * sectionArea * shearModulus / (youngsModulus * horizontalAreaMoment) * (hPrime - theta)
     yPrime[4, :] = alphaPrime
-    yPrime[5, :] = omegaSquared / (shearModulus * torsionConstant) * (axesOffset * linearDensity * h - (axesOffset**2 * linearDensity + rollInertia) * alpha)
+    yPrime[5, :] = alphaDoublePrime
+    yPrime[6, :] = alphaTriplePrime
+    yPrime[7, :] = (shearModulus * torsionConstant * alphaDoublePrime + omegaSquared * ((axesOffset**2 * linearDensity + rollInertia) * alpha - axesOffset * linearDensity * h)) / (youngsModulus * warpingConstant)
 
     return yPrime
 
 
 def BendingTorsionBC(yInitial: np.ndarray, yFinal: np.ndarray, p: np.ndarray):
-    boundaryConditions = np.zeros([7])
+    hPrimeInitial = yInitial[1]
+    hPrimeFinal = yFinal[1]
+    thetaInitial = yInitial[2]
+    thetaFinal = yFinal[2]
+    thetaPrimeInitial = yInitial[3]
+    thetaPrimeFinal = yFinal[3]
+    alphaPrimeInitial = yInitial[5]
+    alphaPrimeFinal = yFinal[5]
+    alphaDoublePrimeInitial = yInitial[6]
+    alphaDoublePrimeFinal = yFinal[6]
+    alphaTriplePrimeInitial = yInitial[7]
+    alphaTriplePrimeFinal = yFinal[7]
 
-    boundaryConditions[0] = yInitial[2]
-    boundaryConditions[1] = yInitial[3]
-    boundaryConditions[2] = yInitial[5]
-    boundaryConditions[3] = yFinal[2]
-    boundaryConditions[4] = yFinal[3]
-    boundaryConditions[5] = yFinal[5]
-    boundaryConditions[6] = yInitial[4] + 1
+    boundaryConditions = np.zeros([9])
+
+    boundaryConditions[0] = thetaPrimeInitial
+    boundaryConditions[1] = thetaPrimeFinal
+    boundaryConditions[2] = hPrimeInitial - thetaInitial
+    boundaryConditions[3] = hPrimeFinal - thetaFinal
+    boundaryConditions[4] = shearModulus * torsionConstant * alphaPrimeInitial - youngsModulus * warpingConstant * alphaTriplePrimeInitial
+    boundaryConditions[5] = shearModulus * torsionConstant * alphaPrimeFinal - youngsModulus * warpingConstant * alphaTriplePrimeFinal
+    boundaryConditions[6] = alphaDoublePrimeInitial
+    boundaryConditions[7] = alphaDoublePrimeFinal
+    boundaryConditions[8] = thetaInitial - 1
 
     return boundaryConditions
 
@@ -221,14 +242,16 @@ def BendingTorsionBC(yInitial: np.ndarray, yFinal: np.ndarray, p: np.ndarray):
 torsionBendingDryNaturalFrequenciesBVP = np.zeros([numberModes])
 
 for i in range(numberModes):
-    yGuess = np.zeros([6, nodeXPositions.size])
+    yGuess = np.zeros([8, nodeXPositions.size])
 
-    yGuess[0, :] = torsionBendingDryVibrationModesNormalized[1::7, i]
+    yGuess[0, :] = torsionBendingDryVibrationModesNormalized[1::7, i] / torsionBendingDryVibrationModesNormalized[6, i]
     yGuess[1, :] = np.gradient(yGuess[0, :], nodeXPositions)
-    yGuess[2, :] = np.gradient(yGuess[1, :], nodeXPositions)
+    yGuess[2, :] = torsionBendingDryVibrationModesNormalized[6::7, i] / torsionBendingDryVibrationModesNormalized[6, i]
     yGuess[3, :] = np.gradient(yGuess[2, :], nodeXPositions)
-    yGuess[4, :] = torsionBendingDryVibrationModesNormalized[3::7, i]
+    yGuess[4, :] = torsionBendingDryVibrationModesNormalized[3::7, i] / torsionBendingDryVibrationModesNormalized[6, i]
     yGuess[5, :] = np.gradient(yGuess[4, :], nodeXPositions)
+    yGuess[6, :] = np.gradient(yGuess[5, :], nodeXPositions)
+    yGuess[7, :] = np.gradient(yGuess[6, :], nodeXPositions)
 
     pGuess = np.array([torsionBendingDryNaturalFrequencies[i]**2])
 
@@ -261,48 +284,47 @@ for i in range(numberModes):
     print('%2d        %5.2f         %5.2f'%(i + 2, torsionDryNaturalFrequencies[i], torsionalDryNaturalFrequenciesNoWarpingAnalytic[i]))
 print()
 print('Dry coupled horizontal bending and torsion natural frequencies (rad/s)')
-print('Number    FEM           BVP Bernoulli no warping')
+print('Number    FEM           BVP Timoshenko with warping')
 for i in range(numberModes):
-    print('%2d        %5.2f         %5.2f'%(i + 1, torsionBendingDryNaturalFrequencies[i], torsionBendingDryNaturalFrequenciesBVP[i]))
+    print('%2d        %6.3f        %6.3f'%(i + 1, torsionBendingDryNaturalFrequencies[i], torsionBendingDryNaturalFrequenciesBVP[i]))
 print()
 
 
 plt.figure()
-plt.title('Vertical deflection distribution clamped start, 1N point force end.')
+plt.title('Vertical deflection distribution. Clamped start, 1N point force end.')
 plt.axhline(color = 'k', linewidth = 1)
-plt.plot(x, verticalDeflection, 'b')
+plt.plot(x, verticalDeflection, 'b', label = 'FEM Timoshenko')
+plt.plot(x, analyticVerticalDeflections, 'r--', label = 'Analytic Euler-Bernoulli')
 plt.xlabel('x [m]')
 plt.ylabel('Vertical deflection [m]')
+plt.legend()
+
+fig, axs = plt.subplots(1, 2)
+fig.suptitle('Vertical shear force and bending moment distributions. Clamped start, 1N point force end.')
+axs[0].axhline(y = 0, color = 'k', linewidth = 1)
+axs[0].plot(x, verticalShearForce, 'b')
+axs[0].set(xlabel = 'x [m]', ylabel = 'Vertical shear foce [N]')
+axs[1].axhline(y = 0, color = 'k', linewidth = 1)
+axs[1].plot(x, verticalBendingMoment, 'b')
+axs[1].set(xlabel = 'x [m]', ylabel = 'Vertical bending moment [Nm]')
 
 plt.figure()
-plt.title('Vertical bending moment distribution clamped start, 1N point force end.')
+plt.title('Twisted angle distribution. Clamped start, 1Nm point moment end.')
 plt.axhline(color = 'k', linewidth = 1)
-plt.plot(x, verticalBendingMoment, 'b')
+plt.plot(x, twist, 'b', label = 'FEM with warping')
+plt.plot(x, x / (shearModulus * torsionConstant), 'k--', label = 'Analytic without warping')
 plt.xlabel('x [m]')
-plt.ylabel('Vertical bending moment [Nm]')
+plt.ylabel('Twisted angle [rad]')
+plt.legend()
 
 plt.figure()
-plt.title('Vertical shear force distribution clamped start, 1N point force end.')
+plt.title('Torsional moment distribution. Clamped start, 1Nm point moment end.')
 plt.axhline(color = 'k', linewidth = 1)
-plt.plot(x, verticalShearForce, 'b')
-plt.xlabel('x [m]')
-plt.ylabel('Vertical shear force [N]')
-
-plt.figure()
-plt.title('Twist angle distribution clamped start, 1Nm point moment end.')
-plt.axhline(color = 'k', linewidth = 1)
-plt.plot(x, twist, 'b')
-plt.xlabel('x [m]')
-plt.ylabel('Twist angle [rad]')
-
-plt.figure()
-plt.title('Torsion moment distribution clamped start, 1Nm point moment end.')
-plt.axhline(color = 'k', linewidth = 1)
-plt.plot(x, torsionMoment, 'b', label = 'Full torsion moment')
+plt.plot(x, torsionMoment, 'b', label = 'Full torsional moment')
 plt.plot(x, torsionMomentFree, 'k--', label = 'Free warping component')
 plt.plot(x, torsionMomentWarping, 'g--', label = 'Constrained warping component')
 plt.xlabel('x [m]')
-plt.ylabel('Torsion moment [Nm]')
+plt.ylabel('Torsional moment [Nm]')
 plt.legend()
 
 plt.show()
