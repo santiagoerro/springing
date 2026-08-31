@@ -54,9 +54,9 @@ omegas = np.array([4.50, 5.59, 5.81, 6.07, 6.37, 6.71, 7.12, 8.22])
 waveDirections = np.array([np.pi])
 
 # mesh resolution
-panelsLength = 100
-panelsBreadth = 16
-panelsDepth = 16
+panelsLength = 200
+panelsBreadth = 32
+panelsDepth = 32
 
 
 
@@ -142,7 +142,7 @@ midshipsBendingMoments = np.zeros([omegas.size], dtype = np.complex128)
 midshipsBendingMomentAmplitudes = np.zeros([omegas.size])
 
 for i in range(omegas.size):
-    displacements = waveHeight * springingResults.displacementAmplitudes.values[i, 0, :]
+    displacements = waveHeight / 2 * springingResults.displacementAmplitudes.values[i, 0, :]
     midshipsBendingMoments[i] = beam.InternalForce(hullLength/2, displacements, 'mv')
     midshipsBendingMomentAmplitudes[i] = np.abs(midshipsBendingMoments[i])
 
@@ -155,9 +155,11 @@ wavelengths = 2 * np.pi / wavenumbers
 # bending moment and shear force distributions
 omegaIndex = 3
 x = np.linspace(0, hullLength, 500)
-displacements = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, 0, :]
+displacements = waveHeight / 2 * springingResults.displacementAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
 shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
+np.save('data/nodalDisplacementsFineMesh.npy', displacements)
+np.save('data/allNodalDisplacementsFineMesh.npy', springingResults.displacementAmplitudes.values)
 
 
 
@@ -224,7 +226,7 @@ for series in midshipsBendingMomentCoefsExperimental:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, midshipsBendingMomentCoefs2DNumerical, 'k--', label = '2D Hydroelascity')
 plt.xlim([0,1.75])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
@@ -256,7 +258,7 @@ motion = {}
 dofIndex = 0
 
 for dof in hullBody.dofs.keys():
-    motion[dof] = waveHeight * springingResults.displacementAmplitudes.values[omegaIndex, 0, dofIndex]
+    motion[dof] = waveHeight / 2 * springingResults.displacementAmplitudes.values[omegaIndex, 0, dofIndex]
     dofIndex += 1
 
 animation = hullBody.animate(motion = motion, loop_duration = 1)

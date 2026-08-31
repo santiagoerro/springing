@@ -168,6 +168,7 @@ x = np.linspace(0, hullLength, 500)
 displacements = waveHeight / 2 * dryVibrationModesNormalized @ modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, :]
 bendingMomentDistribution = beam.InternalForce(x, displacements, 'mv')
 shearForceDistribution = beam.InternalForce(x, displacements, 'sv')
+np.save('data/6modeProperDisplacements.npy', displacements)
 
 # force decomposition
 froudeKrylovModalForces = np.zeros([omegas.size, (beamSegments + 1) * 7], dtype = complex)
@@ -381,6 +382,13 @@ midshipsBendingMomentCoefsAqwa = aqwaMidshipsBendingMomentAmplitudes / (rho * g 
 heaveAmplitudesAqwa = np.array(aqwaRAOs['Line G (m/m)']) * waveHeight/2
 pitchAmplitudesAqwa = np.pi/180 * np.array(aqwaRAOs['Line I (°/m)']) * waveHeight/2
 
+aqwaForceDistributions = pd.read_csv('validation/aqwaForceDistributions.csv')
+
+xAqwa = np.array(aqwaForceDistributions['Position (m)'])
+shearForceAqwaReal = np.flip(np.array(aqwaForceDistributions['Line E (N/m)']) * waveHeight/2)
+shearForceAqwaImaginary = np.flip(np.array(aqwaForceDistributions['Line F (N/m)']) * waveHeight/2)
+bendingMomentAqwaReal = np.flip(np.array(aqwaForceDistributions['Line B (N.m/m)']) * waveHeight/2)
+bendingMomentAqwaImaginary = np.flip(np.array(aqwaForceDistributions['Line C (N.m/m)']) * waveHeight/2)
 
 if not os.path.exists('solutions/%dmodesProper'%numberModes):
     os.makedirs('solutions/%dmodesProper'%numberModes)
@@ -397,11 +405,11 @@ for series in momentCoef0Exp:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, momentCoef0MARS, 'k--', label = '2D Hydroelascity')
 plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/0-75LBendingMomentCoefs.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/0-75LBendingMomentCoefs.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Bending moment coefficient at x = 5/8 L for different waves')
@@ -415,11 +423,11 @@ for series in momentCoef1Exp:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, momentCoef1MARS, 'k--', label = '2D Hydroelascity')
 plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/0-625LBendingMomentCoefs.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/0-625LBendingMomentCoefs.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Midships bending moment coefficient for different waves')
@@ -434,11 +442,11 @@ for series in momentCoef2Exp:
 plt.plot(Ll_full, momentCoef2MARS, 'k--', label = '2D Hydroelascity')
 plt.plot(hullLength/aqwaWavelengths, midshipsBendingMomentCoefsAqwa, 'k:', label = 'Ansys Aqwa')
 plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/midshipsBendingMomentCoefs.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/midshipsBendingMomentCoefs.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Bending moment coefficient at x = 3/8 L for different waves')
@@ -452,11 +460,11 @@ for series in momentCoef3Exp:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, momentCoef3MARS, 'k--', label = '2D Hydroelascity')
 plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/0-375LBendingMomentCoefs.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/0-375LBendingMomentCoefs.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Bending moment coefficient at x = 1/4 L for different waves')
@@ -470,11 +478,11 @@ for series in momentCoef4Exp:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, momentCoef4MARS, 'k--', label = '2D Hydroelascity')
 plt.xlim([0, hullLength/wavelengths[-1] * 1.03])
-plt.ylim([0, 0.05])
+# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/0-25LBendingMomentCoefs.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/0-25LBendingMomentCoefs.png'%numberModes, dpi = 200)
 
 counter = 0
 plt.figure()
@@ -493,11 +501,11 @@ plt.xlabel('Ship length / Wave length')
 plt.ylabel('Heave RAO [m/m]')
 plt.ticklabel_format(style = 'sci', axis = 'y', scilimits = (0, 0))
 plt.legend()
-plt.savefig('solutions/%dmodesProper/heaveRAO.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/heaveRAO.png'%numberModes, dpi = 200, bbox_inches = 'tight')
 
 counter = 0
 plt.figure()
-plt.title('Pitch RAO [rad/m]')
+plt.title('Pitch RAO')
 for item in [Pitch1, Pitch2, Pitch3]:
     if counter == 0:
         plt.plot(Ll, item, 'bo', label='Experiment')
@@ -512,11 +520,12 @@ plt.xlabel('Ship length / Wave length')
 plt.ylabel('Pitch RAO [rad/m]')
 plt.ticklabel_format(style = 'sci', axis = 'y', scilimits = (0, 0))
 plt.legend()
-plt.savefig('solutions/%dmodesProper/pitchRAORadPerM.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/pitchRAORadPerM.png'%numberModes, dpi = 200)
 
 counter = 0
 plt.figure()
-plt.title('Pitch RAO [rad/rad]')
+plt.title('Pitch RAO')
+plt.plot(hullLength/wavelengths, pitchAmplitudes / (waveHeight / wavelengths * np.pi), 'ko', label = 'Capytaine Hydroelasticity')
 for item in [Pitch1, Pitch2, Pitch3]:
     if counter == 0:
         plt.plot(Ll, np.array(item) * hullLength / (2 * np.pi * np.array(Ll)), 'bo', label='Experiment')
@@ -525,13 +534,12 @@ for item in [Pitch1, Pitch2, Pitch3]:
         plt.plot(Ll, np.array(item) * hullLength / (2 * np.pi * np.array(Ll)), 'bo')
 if len(PitchMARS) != 'none':
     plt.plot(Ll_full, PitchMARS * hullLength / (2 * np.pi * Ll_full), 'k--', label='2D Hydroelasticity')
-plt.plot(hullLength/wavelengths, pitchAmplitudes / (waveHeight / wavelengths * np.pi), 'ko', label = 'Capytaine Hydroelasticity')
 plt.plot(hullLength/aqwaWavelengths, pitchAmplitudesAqwa / (waveHeight / aqwaWavelengths * np.pi), 'k:', label = 'Ansys Aqwa')
-plt.xlabel('Ship length / Wave length', fontsize = 16)
-plt.ylabel('Pitch RAO [rad/rad]', fontsize = 16)
+plt.xlabel('Ship length / Wave length')
+plt.ylabel('Pitch RAO [rad/rad]')
 plt.ticklabel_format(style = 'sci', axis = 'y', scilimits = (0, 0))
-plt.legend(fontsize = 12)
-plt.savefig('solutions/%dmodesProper/pitchRAORadPerRad.png'%numberModes)
+plt.legend()
+plt.savefig('solutions/%dmodesProper/pitchRAORadPerRad.png'%numberModes, dpi = 200, bbox_inches = 'tight')
 
 # plt.figure()
 # plt.title('Pitch RAO')
@@ -543,7 +551,7 @@ plt.savefig('solutions/%dmodesProper/pitchRAORadPerRad.png'%numberModes)
 # # plt.ylabel('Pitch RAO [rad/rad]')
 # plt.ylabel('Pitch RAO [rad/m]')
 # plt.legend()
-# plt.savefig('solutions/%dmodesProper/pitchRAO.png'%numberModes)
+# plt.savefig('solutions/%dmodesProper/pitchRAO.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Heave excitation force')
@@ -551,7 +559,7 @@ plt.plot(hullLength/wavelengths, np.abs(hydrodynamicResults.excitation_force.val
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Heave excitation force over square root of ship mass per unit wave amplitude [N/sqrt(kg) / m]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/heaveExcitation.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/heaveExcitation.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Pitch excitation force')
@@ -559,7 +567,7 @@ plt.plot(hullLength/wavelengths, np.abs(hydrodynamicResults.excitation_force.val
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Pitch excitation force over square root of pitch inertia per unit wave amplitude [Nm/sqrt(kg m2) / m]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/pitchExcitation.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/pitchExcitation.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Heave transfer function')
@@ -567,7 +575,7 @@ plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFro
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Heave transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/heaveTransferFunction.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/heaveTransferFunction.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Pitch transfer function')
@@ -575,7 +583,7 @@ plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFro
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Pitch transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/pitchTransferFunction.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/pitchTransferFunction.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Heave to pitch transfer function')
@@ -583,7 +591,7 @@ plt.plot(hullLength/wavelengths, np.abs(modalSpringingResults.modalAmplitudesFro
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('Heave to pitch transfer function [sqrt(kg)m / (sqrt(kg)m / s2)]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/heaveToPitchTransferFunction.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/heaveToPitchTransferFunction.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Vertical bending moment distribution for omega = %.2f rad/s'%omegas[omegaIndex])
@@ -591,11 +599,13 @@ plt.plot(x, np.imag(bendingMomentDistribution), 'g', label = 'Imaginary part, fu
 plt.plot(x, np.real(bendingMomentDistribution), 'k', label = 'Real part, full springing results')
 plt.plot(xForceDistributions + hullLength/2, np.imag(excitationBendingMoments), 'g--', label = 'Imaginary part, manual integration of excitation pressures')
 plt.plot(xForceDistributions + hullLength/2, np.real(excitationBendingMoments), 'k--', label = 'Real part, manual integration of excitation pressures')
+plt.plot(xAqwa, bendingMomentAqwaImaginary, 'g:', label = 'Imaginary part, Ansys Aqwa results')
+plt.plot(xAqwa, bendingMomentAqwaReal, 'k:', label = 'Real part, Ansys Aqwa results')
 plt.ylim([-1.2, 4.5])
 plt.xlabel('x [m]')
 plt.ylabel('Vertical bending moment [Nm]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/bendingMomentDistribution.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/bendingMomentDistribution.png'%numberModes, dpi = 200)
 
 plt.figure()
 plt.title('Vertical shear force distribution for omega = %.2f rad/s'%omegas[omegaIndex])
@@ -603,11 +613,32 @@ plt.plot(x, np.imag(shearForceDistribution), 'g', label = 'Imaginary part, full 
 plt.plot(x, np.real(shearForceDistribution), 'k', label = 'Real part, full springing results')
 plt.plot(xForceDistributions + hullLength/2, np.imag(excitationShearForces), 'g--', label = 'Imaginary part, manual integration of excitation pressures')
 plt.plot(xForceDistributions + hullLength/2, np.real(excitationShearForces), 'k--', label = 'Real part, manual integration of excitation pressures')
+plt.plot(xAqwa, shearForceAqwaImaginary, 'g:', label = 'Imaginary part, Ansys Aqwa results')
+plt.plot(xAqwa, shearForceAqwaReal, 'k:', label = 'Real part, Ansys Aqwa results')
 plt.ylim([-6, 11])
 plt.xlabel('x [m]')
 plt.ylabel('Vertical shear force [N]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/shearForceDistribution.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/shearForceDistribution.png'%numberModes, dpi = 200)
+
+fig, axs = plt.subplots(1, 2, layout = 'constrained', figsize = (9, 5))
+fig.suptitle('Comparison of vertical shear force and bending moment distributions for omega = 6.07 rad/s.')
+axs[0].plot(x, np.imag(shearForceDistribution), 'g')
+axs[0].plot(x, np.real(shearForceDistribution), 'k')
+axs[0].plot(xForceDistributions + hullLength/2, np.imag(excitationShearForces), 'g--')
+axs[0].plot(xForceDistributions + hullLength/2, np.real(excitationShearForces), 'k--')
+axs[0].plot(xAqwa, shearForceAqwaImaginary, 'g:')
+axs[0].plot(xAqwa, shearForceAqwaReal, 'k:')
+axs[0].set(xlabel = 'x [m]', ylabel = 'Vertical shear force [N]')
+axs[1].plot(x, np.imag(bendingMomentDistribution), 'g', label = 'Full springing results, imaginary part')
+axs[1].plot(x, np.real(bendingMomentDistribution), 'k', label = 'Full springing results, real part')
+axs[1].plot(xForceDistributions + hullLength/2, np.imag(excitationBendingMoments), 'g--', label = 'Integration of Capytaine excitation pressures, imaginary part')
+axs[1].plot(xForceDistributions + hullLength/2, np.real(excitationBendingMoments), 'k--', label = 'Integration of Capytaine excitation pressures, real part')
+axs[1].plot(xAqwa, bendingMomentAqwaImaginary, 'g:', label = 'Ansys Aqwa results, imaginary part')
+axs[1].plot(xAqwa, bendingMomentAqwaReal, 'k:', label = 'Ansys Aqwa results, real part')
+axs[1].set(xlabel = 'x [m]', ylabel = 'Vertical bending moment [Nm]')
+fig.legend(loc = 'outside lower right')
+fig.savefig('solutions/%dmodesProper/shearForceBendingMomentDistributions.png'%numberModes, dpi = 200, bbox_inches = 'tight')
 
 plt.figure(figsize = (20,10))
 plt.title('Midships bending moment force decomposition')
@@ -628,7 +659,7 @@ plt.plot(omegas, np.imag(bendingMomentsFromHydrostaticStiffnessForces), 'bx', la
 plt.xlabel('omega [rad/s]')
 plt.ylabel('Bending moment [Nm]')
 plt.legend()
-plt.savefig('solutions/%dmodesProper/bendingMomentDecomposition.png'%numberModes)
+plt.savefig('solutions/%dmodesProper/bendingMomentDecomposition.png'%numberModes, dpi = 200)
 
 plt.show()
 

@@ -278,7 +278,7 @@ motion = {}
 dofIndex = 0
 
 for dof in hullBody.dofs.keys():
-    motion[dof] = waveHeight * modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, dofIndex]
+    motion[dof] = waveHeight / 2 * modalSpringingResults.modalAmplitudes.values[omegaIndex, 0, dofIndex]
     dofIndex += 1
 
 animation = hullBody.animate(motion = motion, loop_duration = 1)
