@@ -186,10 +186,6 @@ for i in range(omegas.size):
     print('%.2f               %.2f'%(omegas[i], midshipsBendingMomentAmplitudes[i]))
 print()
 
-# for i in range(6, 16):
-#     animation = hullBody.animate(motion = 'mode%d'%i, loop_duration = 1)
-#     animation.run()
-
 
 # paper results
 import pandas as pd

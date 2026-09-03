@@ -52,7 +52,7 @@ class Beam:
                 center of mass of the `i`-th segment, in m. Must be provided if the FEM structural mass matrix is not manually given
                 by the user in `'massMatrix'`.
             - `'rollInertias'`: `(n,)-numpy.ndarray` optional, `i`-th component: mass moment of inertia per unit length of the
-                `i`-th segment around an axis parallel to the x-axis that passses through its center of mass, in kg m^2 / m. Must be
+                `i`-th segment around an axis parallel to the x-axis that passes through its center of mass, in kg m^2 / m. Must be
                 provided if the FEM structural mass matrix is not manually given by the user in `'massMatrix'`.
             - `'pointMasses'`: `(m,)-numpy.ndarray` optional, `i`-th component: mass, in kg, of the `i`-th point mass. When provided,
                 their contributions will be added to the calculation of the mass matrix. Must be provided together with
@@ -219,7 +219,7 @@ class Beam:
 
         :type rollInertias: (n,)-numpy.ndarray
         :param rollInertias: Array, `i`-th component: mass moment of inertia per unit length of the `i`-th segment around
-            an axis parallel to the x-axis that passses through its center of mass, in kg m^2 / m.
+            an axis parallel to the x-axis that passes through its center of mass, in kg m^2 / m.
 
         :rtype: (7*(n+1), 7*(n+1))-numpy.ndarray
         :returns: Mass matrix for the FEM analysis.
@@ -1480,51 +1480,71 @@ class NodalSpringingResults:
 
     def __init__(self, massMatrix: np.ndarray, stiffnessMatrix: np.ndarray, hydrostaticStiffness: xr.DataArray, hydrodynamicResults: xr.Dataset):
         """
-        Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
-        of segments.
+        Instantiates a NodalSpringingResults variable, calculating and storing the results of the nodal
+        springing analysis defined by the parameters passed to it. Throughout, `n` corresponds to the
+        beam's number of segments.
 
         :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
-        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
-            matrix for the hull girder beam.
+        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass matrix
+            for the hull girder beam in the nodal basis.
 
         :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
         :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
-            Method stiffness matrix for the hull girder beam.
+            Method stiffness matrix for the hull girder beam in the nodal basis.
 
         :type hydrostaticStiffness: xarray.DataArray
-        :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
-            defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
-            the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
-            freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
-            of the `MeshBeamProperties` class.
+        :param hydrostaticStiffness: Hydrostatic stiffness results for the `FloatingBody` defining the
+            ship, as returned by the `springing.ComputeHydrostaticStiffness` function. The
+            `FloatingBody` must include the nodal degrees of freedom given by the beam vertex motions,
+            as computed by the `CalculateNodalDOFs` method of the `springing.Beam` class.
 
         :type hydrodynamicResults: xarray.Dataset
         :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
-            FloatingBody defined by the ship on a test matrix with different wave frequencies,
+            `FloatingBody` defining the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
-            `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
-            given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
-            method.
+            `capytaine.BEMSolver` class. The `FloatingBody` must include the nodal degrees of freedom
+            defined by the beam vertex motions, as computed by the `CalculateNodalDOFs` method of
+            the `springing.Beam` class.
 
-        :rtype: SpringingResults
+        :rtype: NodalSpringingResults
         :returns: Class object containing the following attributes.
 
-            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
-                of the springing motions of the beam nodes divided by wave amplitude, in m/m and
-                rad/m. The motions are sinusoidal, with the real part of the amplitude being the
-                displacement at t = 0 and the imaginary part being the displacement, with
-                opposite sign, after one fourth of the period. The array's dimensions are labeled
-                `'omega'`, `'wave_direction'`, `'water_depth'` and `'dof'`. The length and
-                coordinates associated to each of the first three dimensions match those of the
-                `added_mass` and `radiation_damping` attributes of `hydrodynamicResults`, and
-                are determined by the test matrix passed to the Capytaine BEM Solver when calculating
-                these results. The `'dof'` dimension has a length of 6n and indexes the degree of
-                freedom each amplitude corresponds to.
-            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
-                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
-                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - displacementAmplitudes: `xarray.DataArray`. Array of results for the frequency-domain
+                complex amplitudes of the springing motions of the beam nodes divided by wave amplitude,
+                in m/m and rad/m. The array's dimensions are labeled `'omega'`, `'wave_direction'`,
+                `'water_depth'` and `'dof'`. The length and coordinates associated to each of the first
+                three dimensions match those of the `added_mass`, `radiation_damping` and
+                `excitation_force` attributes of `hydrodynamicResults`, and are determined by the test
+                matrix passed to the Capytaine BEM Solver when calculating these results. The `'dof'`
+                dimension has a length of `7*(n+1)` and indexes the degree of freedom each amplitude
+                corresponds to.
+            - forcesFromAmplitudesMatrices: `xarray.DataArray`. Array of matrices characterizing the
+                hydroelastic frequency-domain linear equations of motion of the springing problems. The
+                array's dimensions are labeled `'omega'`, `'water_depth'`, `'influenced_dof'` and
+                `'radiating_dof'`. The length and coordinates associated to each of the first two
+                dimensions match those of the `added_mass` and `radiation_damping` attributes of
+                `hydrodynamicResults`. The `'influenced_dof'` and `'radiating_dof'` dimensions have a
+                length of `7*(n+1)` and index the entries of the various matrices characterizing the
+                equations of motion. Frequency-domain complex amplitudes for the nodal motions are
+                dotted into the `'radiating_dof'` dimension to obtain nodal forces, indexed by the
+                `'influenced_dof'` dimension.
+            - amplitudesFromForcesMatrices: `xarray.DataArray`. Array of inverses of the
+                `forcesFromAmplitudesMatrices`, which correspond to the dynamical system's transfer
+                functions. The array's dimensions are labeled `'omega'`, `'water_depth'`,
+                `'radiating_dof'` and `'influenced_dof'`. The length and coordinates associated to each
+                of the first two dimensions match those of the `added_mass` and `radiation_damping`
+                attributes of `hydrodynamicResults`. The `'radiating_dof'` and `'influenced_dof'`
+                dimensions have a length of `7*(n+1)` and index the entries of the various transfer
+                function matrices. Frequency-domain complex amplitudes for the nodal excitation forces
+                are dotted into the `'influenced_dof'` dimension to obtain nodal displacement
+                amplitudes, indexed by the `'radiating_dof'` dimension.
+            - massMatrix: `xarray.DataArray`. The provided `massMatrix`, with dimensions labeled
+                `'influenced_dof'` and `'radiating_dof'`.
+            - stiffnessMatrix: `xarray.DataArray`. The provided `stiffnessMatrix`, with dimensions
+                labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrostaticStiffness: `xarray.DataArray`. The provided `hydrostaticStiffness`, with
+                dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrodynamicResults: `xarray.DataSet`. The provided `hydrodynamicResults`.
         """
 
         self.massMatrix = xr.DataArray(massMatrix, dims = ['influenced_dof', 'radiating_dof'])
@@ -1549,51 +1569,70 @@ class ModalSpringingResults:
 
     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
         """
-        Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
-        of segments.
+        Instantiates a ModalSpringingResults variable, calculating and storing the results of the
+        standard modal springing analysis defined by the parameters passed to it. This approach is
+        characterized by reducing the dimensionality of the structural problem to only those modes for
+        which radiation results have been computed. Throughout, `n` corresponds to the number of modes
+        of vibration considered.
 
-        :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
-        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
-            matrix for the hull girder beam.
+        :type dryNaturalFrequenciesSquared: (n,)-numpy.ndarray
+        :param dryNaturalFrequenciesSquared: Array of values for the squared dry natural frequencies of
+        the modes of vibration considered, in (rad/s)^2. These values must be ordered increasingly.
 
-        :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
-        :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
-            Method stiffness matrix for the hull girder beam.
+        :type modalHydrostaticStiffness: xarray.DataArray
+        :param modalHydrostaticStiffness: Modal hydrostatic stiffness results for the `FloatingBody`
+            defining the ship, as returned by the `springing.ComputeHydrostaticStiffness` function. The
+            `FloatingBody` must include the modal degrees of freedom given by the modes of vibration
+            considered, as computed by the `CalculateModalDOFs` method of the `springing.Beam` class.
 
-        :type hydrostaticStiffness: xarray.DataArray
-        :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
-            defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
-            the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
-            freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
-            of the `MeshBeamProperties` class.
-
-        :type hydrodynamicResults: xarray.Dataset
-        :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
-            FloatingBody defined by the ship on a test matrix with different wave frequencies,
+        :type modalHydrodynamicResults: xarray.Dataset
+        :param modalHydrodynamicResults: Dataset of Capytaine linear potential flow results for the
+            `FloatingBody` defining the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
-            `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
-            given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
-            method.
+            `capytaine.BEMSolver` class. The `FloatingBody` must include the modal degrees of freedom
+            given by the modes of vibration considered, as computed by the `CalculateModalDOFs` method
+            of the `springing.Beam` class.
 
-        :rtype: SpringingResults
+        :rtype: ModalSpringingResults
         :returns: Class object containing the following attributes.
 
-            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
-                of the springing motions of the beam nodes divided by wave height, in m/m and
-                rad/m. The motions are sinusoidal, with the real part of the amplitude being the
-                displacement at t = 0 and the imaginary part being the displacement, with
-                opposite sign, after one fourth of the period. The array's dimensions are labeled
-                `'omega'`, `'wave_direction'`, `'water_depth'` and `'dof'`. The length and
-                coordinates associated to each of the first three dimensions match those of the
-                `added_mass` and `radiation_damping` attributes of `hydrodynamicResults`, and
-                are determined by the test matrix passed to the Capytaine BEM Solver when calculating
-                these results. The `'dof'` dimension has a length of 6n and indexes the degree of
-                freedom each amplitude corresponds to.
-            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+            - modalAmplitudes: `xarray.DataArray`. Array of springing results for the frequency-domain
+                complex amplitudes of the modal degrees of freedom divided by wave amplitude, with
+                units sqrt(m). The array's dimensions are labeled `'omega'`, `'wave_direction'`,
+                `'water_depth'` and `'dof'`. The length and coordinates associated to each of the first
+                three dimensions match those of the `added_mass`, `radiation_damping` and
+                `excitation_force` attributes of `modalHydrodynamicResults`, and are determined by the
+                test matrix passed to the Capytaine BEM Solver when calculating these results. The
+                `'dof'` dimension has a length of `n` and indexes the modal degree of freedom each
+                amplitude corresponds to.
+            - modalForcesFromAmplitudesMatrices: `xarray.DataArray`. Array of matrices characterizing
+                the hydroelastic frequency-domain linear equations of motion of the springing problems
+                in modal space, with units of 1/s^2. The array's dimensions are labeled `'omega'`,
+                `'water_depth'`, `'influenced_dof'` and `'radiating_dof'`. The length and coordinates
+                associated to each of the first two dimensions match those of the `added_mass` and
+                `radiation_damping` attributes of `modalHydrodynamicResults`. The `'influenced_dof'`
+                and `'radiating_dof'` dimensions have a length of `n` and index the entries of the
+                various matrices characterizing the equations of motion. Frequency-domain complex modal
+                amplitudes are dotted into the `'radiating_dof'` dimension to obtain modal forces,
+                indexed by the `'influenced_dof'` dimension.
+            - modalAmplitudesFromForcesMatrices: `xarray.DataArray`. Array of inverses of the
+                `modalForcesFromAmplitudesMatrices`, which correspond to the dynamical system's modal
+                transfer functions, with units of s^2. The array's dimensions are labeled `'omega'`,
+                `'water_depth'`, `'radiating_dof'` and `'influenced_dof'`. The length and coordinates
+                associated to each of the first two dimensions match those of the `added_mass` and
+                `radiation_damping` attributes of `modalHydrodynamicResults`. The `'radiating_dof'`
+                and `'influenced_dof'` dimensions have a length of `n` and index the entries of the
+                various modal transfer function matrices. Frequency-domain complex amplitudes for the
+                modal excitation forces are dotted into the `'influenced_dof'` dimension to obtain
+                modal motion amplitudes, indexed by the `'radiating_dof'` dimension.
+            - massMatrix: `xarray.DataArray`. The modal mass matrix, equal to a n by n identity matrix,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
-                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - stiffnessMatrix: `xarray.DataArray`. The modal stiffness matrix, equal to a diagonal n by
+                n matrix with values `dryNaturalFrequenciesSquared` on the diagonal. Its dimensions are
+                labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrostaticStiffness: `xarray.DataArray`. The provided `modalHydrostaticStiffness`, with
+                dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrodynamicResults: `xarray.DataSet`. The provided `modalHydrodynamicResults`.
         """
 
         massMatrix = np.eye(dryNaturalFrequenciesSquared.size)
@@ -1620,51 +1659,73 @@ class ModalProperSpringingResults:
 
     def __init__(self, dryNaturalFrequenciesSquared: np.ndarray, modalHydrostaticStiffness: xr.DataArray, modalHydrodynamicResults: xr.Dataset):
         """
-        Instantiates a SpringingResults variable, calculating and storing the results of the springing
-        analysis defined by the parameters passed to it. Throughout, `n` corresponds to the beam's number
-        of segments.
+        Instantiates a ModalProperSpringingResults variable, calculating and storing the results of the
+        springing problem defined by the parameters passed to it by means of the alternate method
+        proposed. This approach is characterized by solving the structural problem in its full
+        dimensionality while only partially filling the added mass and radiation damping matrices
+        according to the number of radiation problems that have been computed. Throughout, `n`
+        corresponds to the number of degrees of freedom of the FEM beam.
 
-        :type massMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
-        :param massMatrix: Structural mass matrix of the ship, as a Finite Elements Method mass
-            matrix for the hull girder beam.
+        :type dryNaturalFrequenciesSquared: (n,)-numpy.ndarray
+        :param dryNaturalFrequenciesSquared: Array of values for the squared dry natural frequencies of
+        all modes of vibration of the beam, in (rad/s)^2. These values must be ordered increasingly.
 
-        :type stiffnessMatrix: (7*(n+1),7*(n+1))-numpy.ndarray
-        :param stiffnessMatrix: Structural stiffness matrix of the ship, as a Finite Elements
-            Method stiffness matrix for the hull girder beam.
+        :type modalHydrostaticStiffness: xarray.DataArray
+        :param modalHydrostaticStiffness: Modal hydrostatic stiffness results for the `FloatingBody`
+            defining the ship, as returned by the `springing.ComputeHydrostaticStiffness` function. The
+            `FloatingBody` must include the modal degrees of freedom given by all `n` modes of
+            vibration of the beam, as computed by the `CalculateModalDOFs` method of the `springing.Beam`
+            class.
 
-        :type hydrostaticStiffness: xarray.DataArray
-        :param hydrostaticStiffness: Capytaine hydrostatic stiffness results for the FloatingBody
-            defined by the ship, as returned by the `compute_hydrostatic_stiffness` method of
-            the `capytaine.FloatingBody` class. The FloatingBody must include the degrees of
-            freedom given by the beam vertex motions, as calculated by the `CreateDOFs` method
-            of the `MeshBeamProperties` class.
-
-        :type hydrodynamicResults: xarray.Dataset
-        :param hydrodynamicResults: Dataset of Capytaine linear potential flow results for the
-            FloatingBody defined by the ship on a test matrix with different wave frequencies,
+        :type modalHydrodynamicResults: xarray.Dataset
+        :param modalHydrodynamicResults: Dataset of Capytaine linear potential flow results for the
+            `FloatingBody` defining the ship on a test matrix with different wave frequencies,
             directions and water depths, as returned by the `fill_dataset` method of the
-            `capytaine.BEMSolver` class. The FloatingBody must include the degrees of freedom
-            given by the beam vertex motions, as calculated by the `MeshBeamProperties.CreateDOFs`
-            method.
+            `capytaine.BEMSolver` class. The `FloatingBody` must include the modal degrees of freedom
+            given by all `n` modes of vibration of the beam, as computed by the `CalculateModalDOFs`
+            method of the `springing.Beam` class. However, only a subset of all radiation problems need
+            to have been computed.
 
-        :rtype: SpringingResults
+        :rtype: ModalProperSpringingResults
         :returns: Class object containing the following attributes.
 
-            - displacementAmplitudes (xarray.DataArray): Array of results for the complex amplitudes
-                of the springing motions of the beam nodes divided by wave height, in m/m and
-                rad/m. The motions are sinusoidal, with the real part of the amplitude being the
-                displacement at t = 0 and the imaginary part being the displacement, with
-                opposite sign, after one fourth of the period. The array's dimensions are labeled
-                `'omega'`, `'wave_direction'`, `'water_depth'` and `'dof'`. The length and
-                coordinates associated to each of the first three dimensions match those of the
-                `added_mass` and `radiation_damping` attributes of `hydrodynamicResults`, and
-                are determined by the test matrix passed to the Capytaine BEM Solver when calculating
-                these results. The `'dof'` dimension has a length of 6n and indexes the degree of
-                freedom each amplitude corresponds to.
-            - massMatrix (xarray.DataArray): The provided `massMatrix` as an `xarray.DataArray`,
+            - modalAmplitudes: `xarray.DataArray`. Array of springing results for the frequency-domain
+                complex amplitudes of all modal degrees of freedom divided by wave amplitude, with
+                units sqrt(m). The array's dimensions are labeled `'omega'`, `'wave_direction'`,
+                `'water_depth'` and `'dof'`. The length and coordinates associated to each of the first
+                three dimensions match those of the `added_mass`, `radiation_damping` and
+                `excitation_force` attributes of `modalHydrodynamicResults`, and are determined by the
+                test matrix passed to the Capytaine BEM Solver when calculating these results. The
+                `'dof'` dimension has a length of `n` and indexes the modal degree of freedom each
+                amplitude corresponds to.
+            - modalForcesFromAmplitudesMatrices: `xarray.DataArray`. Array of matrices characterizing
+                the hydroelastic frequency-domain linear equations of motion of the springing problems
+                in modal space, with units of 1/s^2. The array's dimensions are labeled `'omega'`,
+                `'water_depth'`, `'influenced_dof'` and `'radiating_dof'`. The length and coordinates
+                associated to each of the first two dimensions match those of the `added_mass` and
+                `radiation_damping` attributes of `modalHydrodynamicResults`. The `'influenced_dof'`
+                and `'radiating_dof'` dimensions have a length of `n` and index the entries of the
+                various matrices characterizing the equations of motion. Frequency-domain complex modal
+                amplitudes are dotted into the `'radiating_dof'` dimension to obtain modal forces,
+                indexed by the `'influenced_dof'` dimension.
+            - modalAmplitudesFromForcesMatrices: `xarray.DataArray`. Array of inverses of the
+                `modalForcesFromAmplitudesMatrices`, which correspond to the dynamical system's modal
+                transfer functions, with units of s^2. The array's dimensions are labeled `'omega'`,
+                `'water_depth'`, `'radiating_dof'` and `'influenced_dof'`. The length and coordinates
+                associated to each of the first two dimensions match those of the `added_mass` and
+                `radiation_damping` attributes of `modalHydrodynamicResults`. The `'radiating_dof'`
+                and `'influenced_dof'` dimensions have a length of `n` and index the entries of the
+                various modal transfer function matrices. Frequency-domain complex amplitudes for the
+                modal excitation forces are dotted into the `'influenced_dof'` dimension to obtain
+                modal motion amplitudes, indexed by the `'radiating_dof'` dimension.
+            - massMatrix: `xarray.DataArray`. The modal mass matrix, equal to a n by n identity matrix,
                 with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
-            - stiffnessMatrix (xarray.DataArray): The provided `stiffnessMatrix` as an `xarray.DataArray`,
-                with dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - stiffnessMatrix: `xarray.DataArray`. The modal stiffness matrix, equal to a diagonal n by
+                n matrix with values `dryNaturalFrequenciesSquared` on the diagonal. Its dimensions are
+                labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrostaticStiffness: `xarray.DataArray`. The provided `modalHydrostaticStiffness`, with
+                dimensions labeled `'influenced_dof'` and `'radiating_dof'`.
+            - hydrodynamicResults: `xarray.DataSet`. The provided `modalHydrodynamicResults`.
         """
 
         numberOmegas = modalHydrodynamicResults.omega.size
@@ -1700,10 +1761,10 @@ class ModalProperSpringingResults:
 
 def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float, gravity: float):
     """
-    Calculates the hydrostatic stiffness matrix associated to the provided Capytaine FloatingBody.
+    Calculates the hydrostatic stiffness matrix associated to the provided Capytaine `FloatingBody`.
 
     :type hullBody: capytaine.FloatingBody
-    :param hullBody: The Capytaine FloatingBody for which the hydrostatic stiffness matrix is to be calculated, defined according
+    :param hullBody: The Capytaine `FloatingBody` for which the hydrostatic stiffness matrix is to be calculated, defined according
         to the desired degrees of freedom.
 
     :type waterDensity: float
@@ -1711,6 +1772,9 @@ def ComputeHydrostaticStiffness(hullBody: cpt.FloatingBody, waterDensity: float,
 
     :type gravity: float
     :param gravity: Acceleration of gravity, in m/s^2.
+
+    :rtype: xarray.DataArray
+    :return: Hydrostatic stiffness matrix of the provided `FloatingBody`, computed according to the same method employed by Capytaine.
     """
 
     numberDofs = len(hullBody.dofs)

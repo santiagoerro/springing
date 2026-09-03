@@ -226,7 +226,6 @@ for series in midshipsBendingMomentCoefsExperimental:
         plt.plot(Ll, series, 'bo')
 plt.plot(Ll_full, midshipsBendingMomentCoefs2DNumerical, 'k--', label = '2D Hydroelascity')
 plt.xlim([0,1.75])
-# plt.ylim([0, 0.05])
 plt.xlabel('Ship length / wavelength')
 plt.ylabel('CM')
 plt.legend()
